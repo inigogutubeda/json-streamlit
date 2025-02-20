@@ -231,7 +231,7 @@ def show_chatbot():
 ########################
 def main():
     # Barra lateral con info o branding
-    st.sidebar.image("https://upload.wikimedia.org/wikipedia/commons/thumb/9/90/Logo_RedCross.svg/200px-Logo_RedCross.svg.png", 
+    st.sidebar.image("https://img1.wsimg.com/isteam/ip/5fadffce-9442-4e9d-9694-b276e29b2ea9/Logo%20mayores.ai.jpg/:/rs=w:292,h:92,cg:true,m/cr=w:292,h:92/qt=q:100/ll", 
                     width=100)
     st.sidebar.title("POC Residencias")
     st.sidebar.write("Selección de página:")
