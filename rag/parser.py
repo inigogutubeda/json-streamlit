@@ -3,41 +3,61 @@ import re
 
 def interpret_question(user_input: str) -> dict:
     """
-    Detecta varias intenciones básicas:
-      - get_total_year_by_proveedor: "¿Cuánto hemos gastado con [proveedor] en [2024]?"
-      - get_total_year: "¿Cuánto nos hemos gastado en 2024?"
-    Si no reconoce nada, fallback.
+    Detecta intenciones avanzadas:
+     - ranking_gastos_centros: "¿En qué residencia gastamos más en 2024?"
+     - max_factura_year: "Factura más alta en 2024"
+     - (ejemplo) ranking_proveedores: "Ranking de proveedores más caros en Residencia 2"
+     - resumen_residencia: "Dame un resumen de Residencia 1"
+     - fallback: no reconoce
     """
     text = user_input.lower()
 
-    # Regex para capturar un año (2024, 2023, etc.)
+    # 1) Buscar año (4 dígitos)
     year_pattern = r"(\d{4})"
-    year_match = re.search(year_pattern, text)
-    year = None
-    if year_match:
-        year = int(year_match.group(1))
+    match_year = re.search(year_pattern, text)
+    year = int(match_year.group(1)) if match_year else None
 
-    # Regex para "con <proveedor> en <año>"
-    proveedor_pattern = r"con\s+([a-záéíóúñ\s\.]+)\s+en\s+\d{4}"
-    prov_match = re.search(proveedor_pattern, text)
-    proveedor = None
-    if prov_match:
-        proveedor = prov_match.group(1).strip()
+    # 2) Buscar "residencia X" o "fundación x" con un regex sencillo
+    # Ej.: "residencia 2" o "fundación x"
+    centro_pattern = r"(residencia\s*\d+|fundaci[óo]n\s*x)"
+    match_centro = re.search(centro_pattern, text)
+    centro_str = match_centro.group(1) if match_centro else None
 
-    # Caso 1: get_total_year_by_proveedor
-    if proveedor and year:
+    # 3) Detección de keywords:
+    if "ranking proveedores" in text or "proveedores más caros" in text:
         return {
-            "intent": "get_total_year_by_proveedor",
-            "proveedor": proveedor,
+            "intent": "ranking_proveedores",
+            "centro": centro_str,
             "year": year
         }
 
-    # Caso 2: get_total_year (si mencionan gasto y un año)
+    if "factura más alta" in text or "factura mas alta" in text:
+        return {
+            "intent": "max_factura_year",
+            "year": year
+        }
+
+    if "resumen" in text and centro_str:
+        return {
+            "intent": "resumen_residencia",
+            "centro": centro_str,
+            "year": year
+        }
+
+    # "¿En qué residencia estamos gastando más en 2024?"
+    if (("residencia" in text or "centro" in text) 
+        and ("gastar" in text or "gastamos" in text)
+        and ("más" in text or "mas" in text)):
+        return {
+            "intent": "ranking_gastos_centros",
+            "year": year
+        }
+
+    # Mantén intenciones previas, ej. get_total_year
     if ("gasto" in text or "gastado" in text) and year:
         return {
             "intent": "get_total_year",
             "year": year
         }
 
-    # Fallback
     return {"intent": "fallback"}
