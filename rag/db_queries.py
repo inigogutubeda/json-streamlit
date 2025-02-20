@@ -1,6 +1,7 @@
 # rag/db_queries.py
 import datetime
 from supabase import Client
+import pandas as pd
 
 def get_invoices_by_year(supabase_client: Client, year: int):
     """
@@ -37,3 +38,13 @@ def count_invoices(invoices):
     Retorna la cantidad de facturas en la lista.
     """
     return len(invoices)
+
+def get_contratos(supabase_client: Client) -> pd.DataFrame:
+    resp = supabase_client.table("contratos").select("*").execute()
+    data = resp.data if resp.data else []
+    return pd.DataFrame(data)
+
+def get_facturas(supabase_client: Client) -> pd.DataFrame:
+    resp = supabase_client.table("facturas").select("*").execute()
+    data = resp.data if resp.data else []
+    return pd.DataFrame(data)
