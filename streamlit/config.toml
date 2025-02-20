@@ -1,5 +1,10 @@
-primaryColor = "#4d8f52"
-backgroundColor = "#fafafa"
-secondaryBackgroundColor = "#f0f0f0"
-textColor = "#333333"
-font = "sans serif"
+[theme]
+primaryColor="#4CAF50"
+backgroundColor="#FFFFFF"
+secondaryBackgroundColor="#F0F2F6"
+textColor="#31333F"
+font="sans serif"
+
+[server]
+headless = true
+port = 8501

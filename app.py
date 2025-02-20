@@ -1,135 +1,251 @@
+##############################################
 # app.py
-
+##############################################
 import os
 import streamlit as st
 import pandas as pd
 import plotly.express as px
 from supabase import create_client, Client
 
-# Importar pipeline RAG
-from rag.pipeline import process_user_question
+# Si tienes tu RAG pipeline, importarlo:
+# from rag.pipeline import process_user_question
+# from rag.db_queries import get_facturas, get_contratos, get_proveedores, etc.
 
-########################################
-# CONFIG ESTETICA
-########################################
+########################
+# CONFIGURACIÓN BÁSICA
+########################
 st.set_page_config(
     page_title="POC Residencias",
+    page_icon="✅",
     layout="wide",
-    initial_sidebar_state="expanded",
-    page_icon="🏠"
 )
 
-# CSS personalizado
+# CSS adicional para estilizar elementos
 CUSTOM_CSS = """
 <style>
-/* Contenedor principal: da algo de margen */
+/* Ajustar los contenedores principales */
 .main > div {
     padding-left: 3rem;
     padding-right: 3rem;
+    background-color: #FFFFFF; 
 }
 
-/* Ajuste del color de la barra lateral */
-section[data-testid="stSidebar"] {
-    background-color: #F6FFFA;
+/* Contenido de cada tab: ligero margen */
+[data-testid="stVerticalBlock"] {
+    margin: 1rem;
 }
 
-/* Estilo para las cajas 'st.metric' */
-.css-12w0qpk {
-    background-color: #ffffffAA !important;
-    border: 1px solid #efefef;
-    border-radius: 0.5rem;
+/* Tarjetas para las métricas */
+.metric-container {
+    background-color: #F7FFFA;
+    border: 1px solid #E0E0E0;
+    border-radius: 8px;
+    padding: 1rem;
+    text-align: center;
+    margin-bottom: 10px;
 }
 
-/* Título principal centrado */
+/* Títulos centrados */
 h1, h2, h3 {
     text-align: center;
-    color: #4D8F52;
+    color: #4CAF50;
+}
+
+/* Estilos para el chat */
+.chat-container {
+    background-color: #F0F2F6;
+    border-radius: 5px;
+    padding: 1rem;
+    margin-bottom: 1rem;
+}
+.user-message {
+    background-color: #DCF8C6;
+    border-radius: 5px;
+    padding: 0.5rem;
+    margin-bottom: 0.5rem;
+    display: inline-block;
+}
+.bot-message {
+    background-color: #FFFFFF;
+    border-radius: 5px;
+    border: 1px solid #DDD;
+    padding: 0.5rem;
+    margin-bottom: 0.5rem;
+    display: inline-block;
+    color: #333;
 }
 </style>
 """
 st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 
-
-########################################
-# SUPABASE
-########################################
-
+########################
+# CONEXIÓN A SUPABASE
+########################
 def init_connection():
     url = st.secrets["SUPABASE_URL"]
     key = st.secrets["SUPABASE_KEY"]
     return create_client(url, key)
 
-########################################
-# DASHBOARD
-########################################
-def mostrar_dashboard(supabase_client: Client):
-    st.title("Dashboard - Residencias")
+supabase_client = init_connection()
 
-    # Contratos
+########################
+# FUNCIÓN: DASHBOARD
+########################
+def show_dashboard():
+    st.header("Dashboard Principal")
+
+    # Ejemplo: cargar contratos y facturas
     contratos_resp = supabase_client.table("contratos").select("*").execute()
     df_contratos = pd.DataFrame(contratos_resp.data or [])
 
-    # Facturas
     facturas_resp = supabase_client.table("facturas").select("*").execute()
     df_facturas = pd.DataFrame(facturas_resp.data or [])
 
-    # Mostrar Contratos
-    if df_contratos.empty:
-        st.warning("No hay contratos registrados.")
-    else:
-        st.subheader("Contratos")
-        st.dataframe(df_contratos)
-
-    # Mostrar Facturas
-    if df_facturas.empty:
-        st.warning("No hay facturas registradas.")
+    if df_contratos.empty and df_facturas.empty:
+        st.warning("No se han encontrado datos en la BD.")
         return
 
-    st.subheader("Facturas")
+    # Calcular métricas
+    num_contratos = len(df_contratos)
+    num_facturas = len(df_facturas)
+    df_facturas["total"] = pd.to_numeric(df_facturas["total"], errors="coerce").fillna(0)
+    total_facturado = df_facturas["total"].sum()
+
+    # Sección de métricas en columnas
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        st.markdown('<div class="metric-container">', unsafe_allow_html=True)
+        st.metric("Contratos Totales", num_contratos)
+        st.markdown('</div>', unsafe_allow_html=True)
+    with c2:
+        st.markdown('<div class="metric-container">', unsafe_allow_html=True)
+        st.metric("Facturas Totales", num_facturas)
+        st.markdown('</div>', unsafe_allow_html=True)
+    with c3:
+        st.markdown('<div class="metric-container">', unsafe_allow_html=True)
+        st.metric("Total Facturado (€)", f"{total_facturado:,.2f}")
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    st.markdown("---")
+
+    # Mostrar tabla de contratos
+    st.subheader("Lista de Contratos")
+    if df_contratos.empty:
+        st.info("No hay contratos para mostrar.")
+    else:
+        st.dataframe(df_contratos)
+
+    # Mostrar tabla de facturas y gráfica
+    st.subheader("Lista de Facturas")
+    if df_facturas.empty:
+        st.info("No hay facturas para mostrar.")
+        return
     st.dataframe(df_facturas)
 
-    # Intento de parsear fecha_factura
-    df_facturas["fecha_factura"] = pd.to_datetime(df_facturas["fecha_factura"], errors="coerce")
-    df_facturas["total"] = pd.to_numeric(df_facturas["total"], errors="coerce").fillna(0)
-
-    # Gráfico de barras: total por contrato
+    # Gráfica: Facturado por Contrato
     fig = px.bar(
         df_facturas,
         x="contrato_id",
         y="total",
-        title="Facturación por Contrato"
+        color="contrato_id",
+        title="Facturación por Contrato",
+        labels={"contrato_id": "ID Contrato", "total": "Importe (€)"}
     )
+    fig.update_layout(showlegend=False)
     st.plotly_chart(fig, use_container_width=True)
 
-########################################
-# CHATBOT
-########################################
-def chatbot_rag(supabase_client: Client):
-    st.title("Chatbot RAG")
+########################
+# FUNCIÓN: DOCUMENTOS
+########################
+def show_documentos():
+    st.header("Documentos Asociados")
+    st.write("Visualiza aquí los documentos (PDF) que hayas cargado en la BD.")
 
-    # OpenAI API Key
-    openai_api_key = st.secrets.get("OPENAI_API_KEY")
-    if not openai_api_key:
-        st.error("Falta la clave OPENAI_API_KEY en secrets.")
+    resp_docs = supabase_client.table("documentos").select("*").execute()
+    df_docs = pd.DataFrame(resp_docs.data or [])
+    if df_docs.empty:
+        st.warning("No hay documentos registrados.")
         return
 
-    user_input = st.text_input("Pregunta (ej: ¿Cuánto gastamos con American Tower en 2024?)", "")
+    # Podrías agregar un filtro por contrato o factura
+    st.dataframe(df_docs)
+
+    st.markdown("""
+    #### Descarga de Documentos
+    - Si guardaste la URL (en una columna `url`), podrías mostrar un enlace de descarga.
+    - Ejemplo:
+    """)
+
+    for i, row in df_docs.iterrows():
+        nombre = row.get("nombre_archivo", "doc.pdf")
+        url = row.get("url", None)
+        if url:
+            st.markdown(f"- **{nombre}**: [Abrir/Descargar]({url})")
+        else:
+            st.markdown(f"- **{nombre}** (Sin URL)")
+
+########################
+# FUNCIÓN: CHATBOT
+########################
+def show_chatbot():
+    st.header("Chatbot con RAG (Vista Estética)")
+
+    # Pedimos la clave de OpenAI
+    openai_api_key = st.secrets.get("OPENAI_API_KEY")
+    if not openai_api_key:
+        st.error("No se ha configurado la clave OPENAI_API_KEY en secrets.")
+        return
+
+    # Iniciamos un contenedor para el historial
+    if "chat_history" not in st.session_state:
+        st.session_state["chat_history"] = []
+
+    st.write("Haz tu pregunta sobre contratos/facturas. Ejemplo:")
+    st.info("“¿Cuánto hemos gastado con American Tower en 2024?”")
+
+    user_input = st.text_input("Tu pregunta:", "")
     if st.button("Enviar"):
-        respuesta = process_user_question(supabase_client, user_input, openai_api_key)
-        st.success(respuesta)
+        if user_input.strip():
+            # Llamar a tu pipeline RAG
+            # respuesta = process_user_question(supabase_client, user_input, openai_api_key)
+            # O simular:
+            respuesta = "Esta es una respuesta simulada. Integra aquí tu pipeline RAG."
+            
+            # Guardar en el historial
+            st.session_state["chat_history"].append(("user", user_input))
+            st.session_state["chat_history"].append(("bot", respuesta))
 
-########################################
+    # Mostrar historial de chat
+    st.subheader("Historial de Conversación")
+    with st.container():
+        st.markdown('<div class="chat-container">', unsafe_allow_html=True)
+        for role, msg in st.session_state["chat_history"]:
+            if role == "user":
+                st.markdown(f'<div class="user-message">{msg}</div>', unsafe_allow_html=True)
+            else:
+                st.markdown(f'<div class="bot-message">{msg}</div>', unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+
+########################
 # MAIN
-########################################
+########################
 def main():
-    supabase_client = init_connection()
+    # Barra lateral con info o branding
+    st.sidebar.image("https://upload.wikimedia.org/wikipedia/commons/thumb/9/90/Logo_RedCross.svg/200px-Logo_RedCross.svg.png", 
+                    width=100)
+    st.sidebar.title("POC Residencias")
+    st.sidebar.write("Selección de página:")
 
-    menu = ["Dashboard", "Chatbot"]
-    choice = st.sidebar.radio("Menú", menu)
-    if choice == "Dashboard":
-        mostrar_dashboard(supabase_client)
+    # Crearemos tabs en vez de radio
+    tab_names = ["Dashboard", "Documentos", "Chatbot"]
+    selected_tab = st.sidebar.radio("", tab_names)
+
+    if selected_tab == "Dashboard":
+        show_dashboard()
+    elif selected_tab == "Documentos":
+        show_documentos()
     else:
-        chatbot_rag(supabase_client)
+        show_chatbot()
 
 if __name__ == "__main__":
     main()
