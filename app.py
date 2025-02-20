@@ -1,7 +1,7 @@
 # rag/pipeline.py
 import pandas as pd
-from .parser import interpret_question
-from .db_queries import (
+from parser import interpret_question
+from db_queries import (
     ranking_gastos_por_centro,
     factura_mas_alta_year,
     ranking_proveedores_por_centro,
