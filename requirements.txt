@@ -4,3 +4,5 @@ openai
 supabase
 python-dotenv
 plotly
+pandas
+regex
