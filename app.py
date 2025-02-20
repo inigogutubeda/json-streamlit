@@ -10,13 +10,49 @@ from supabase import create_client, Client
 from rag.pipeline import process_user_question
 
 ########################################
-# CONFIG
+# CONFIG ESTETICA
 ########################################
 st.set_page_config(
     page_title="POC Residencias",
     layout="wide",
     initial_sidebar_state="expanded",
+    page_icon="🏠"
 )
+
+# CSS personalizado
+CUSTOM_CSS = """
+<style>
+/* Contenedor principal: da algo de margen */
+.main > div {
+    padding-left: 3rem;
+    padding-right: 3rem;
+}
+
+/* Ajuste del color de la barra lateral */
+section[data-testid="stSidebar"] {
+    background-color: #F6FFFA;
+}
+
+/* Estilo para las cajas 'st.metric' */
+.css-12w0qpk {
+    background-color: #ffffffAA !important;
+    border: 1px solid #efefef;
+    border-radius: 0.5rem;
+}
+
+/* Título principal centrado */
+h1, h2, h3 {
+    text-align: center;
+    color: #4D8F52;
+}
+</style>
+"""
+st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
+
+
+########################################
+# SUPABASE
+########################################
 
 def init_connection():
     url = st.secrets["SUPABASE_URL"]
