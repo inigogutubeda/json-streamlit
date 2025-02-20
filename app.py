@@ -3,10 +3,11 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 from supabase import create_client, Client
-import openai
+# Importa la nueva interfaz
+from openai import OpenAI
 
 ########################################
-# CONFIGURACIÓN INICIAL DE LA APP
+# CONFIGURACIÓN INICIAL STREAMLIT
 ########################################
 st.set_page_config(
     page_title="POC Residencias",
@@ -26,116 +27,118 @@ def init_connection():
     return supabase
 
 ########################################
-# FUNCIÓN DE DASHBOARD
+# DASHBOARD
 ########################################
 def mostrar_dashboard(supabase_client: Client):
     st.title("Dashboard - Residencias")
     st.write("Visualiza información de contratos y facturas.")
 
-    # 1) Obtener datos de contratos
+    # 1) Obtener Contratos
     contratos_resp = supabase_client.table("contratos").select("*").execute()
-    contratos_data = contratos_resp.data if contratos_resp.data else []
+    contratos_data = contratos_resp.data or []
 
-    # 2) Obtener datos de facturas
+    # 2) Obtener Facturas
     facturas_resp = supabase_client.table("facturas").select("*").execute()
-    facturas_data = facturas_resp.data if facturas_resp.data else []
+    facturas_data = facturas_resp.data or []
 
-    # Convertir a DataFrames
     df_contratos = pd.DataFrame(contratos_data)
     df_facturas = pd.DataFrame(facturas_data)
 
-    # Si no hay contratos, mostramos aviso
+    # Muestra Contratos
     if df_contratos.empty:
         st.warning("No hay contratos registrados.")
-        return
+    else:
+        st.subheader("Lista de Contratos")
+        st.dataframe(df_contratos)
 
-    st.subheader("Lista de Contratos")
-    st.dataframe(df_contratos)
-
-    st.subheader("Lista de Facturas")
+    # Muestra Facturas
     if df_facturas.empty:
         st.warning("No hay facturas registradas.")
     else:
+        st.subheader("Lista de Facturas")
         st.dataframe(df_facturas)
-        # Ejemplo de gráfico de barras: total facturado por contrato
+
+        # Ejemplo de gráfico: total facturado por contrato
         df_facturas["total"] = pd.to_numeric(df_facturas["total"], errors="coerce").fillna(0)
         fig = px.bar(
-            df_facturas, 
-            x="contrato_id", 
-            y="total", 
+            df_facturas,
+            x="contrato_id",
+            y="total",
             title="Facturación por Contrato"
         )
         st.plotly_chart(fig, use_container_width=True)
 
 ########################################
-# FUNCIÓN DEL CHATBOT (con la nueva API ChatCompletion)
+# CHATBOT (RAG SENCILLO)
 ########################################
 def chatbot_rag(supabase_client: Client):
     st.title("Agente Conversacional")
-    st.write("Consulta información sobre tus contratos/facturas usando GPT-3.5/GPT-4.")
+    st.write("Pregunta sobre tus contratos y facturas. El sistema buscará coincidencias básicas en la tabla 'facturas' y le pasará esa info al modelo GPT.")
 
-    # Clave de OpenAI desde los secrets
-    openai_api_key = st.secrets.get("OPENAI_API_KEY", None)
+    # 1) Recuperamos la clave de OpenAI
+    openai_api_key = st.secrets.get("OPENAI_API_KEY")
     if not openai_api_key:
-        st.error("No se encuentra la clave OPENAI_API_KEY en secrets. Por favor configúrala.")
+        st.error("Falta la clave OPENAI_API_KEY en Streamlit Secrets.")
         return
 
-    openai.api_key = openai_api_key
+    # 2) Creamos el cliente de la nueva librería openai>=1.0
+    client = OpenAI(api_key=openai_api_key)
 
-    user_input = st.text_input("Pregunta sobre tus datos (contratos, facturas, etc.):")
-    
-    if st.button("Enviar") and user_input:
-        # Búsqueda muy básica en la tabla "facturas"
-        query = supabase_client.table("facturas").select("*").execute()
-        facturas_data = query.data if query.data else []
+    # 3) Input del usuario
+    user_input = st.text_input("¿Qué deseas consultar?", "")
+    if st.button("Enviar") and user_input.strip():
+        # Búsqueda trivial en la tabla "facturas"
+        resp = supabase_client.table("facturas").select("*").execute()
+        facturas = resp.data if resp.data else []
 
-        # Filtro casero: busca si user_input está en 'numero_factura' o 'concepto'
-        def contains_query(item):
-            texto = f"{item.get('numero_factura','')} {item.get('concepto','')}"
-            return user_input.lower() in texto.lower()
+        def match_query(f):
+            texto = (f.get("numero_factura", "") + " " + f.get("concepto", "")).lower()
+            return user_input.lower() in texto
 
-        matching_facturas = [f for f in facturas_data if contains_query(f)]
+        matching = [f for f in facturas if match_query(f)]
 
-        # Construir un contexto mínimo con las facturas encontradas
-        contexto = f"He encontrado {len(matching_facturas)} facturas:\n"
-        for f in matching_facturas[:3]:  # máx 3 facturas para no saturar
+        # Construimos un "contexto"
+        contexto = f"He encontrado {len(matching)} facturas relevantes:\n"
+        for f in matching[:3]:
             contexto += (
-                f"- Factura {f.get('numero_factura','')}, "
-                f"concepto: {f.get('concepto','')}, "
+                f"- Factura {f.get('numero_factura','')} "
+                f"concepto: {f.get('concepto','')} "
                 f"total: {f.get('total','')}\n"
             )
 
-        # Montamos los mensajes para ChatCompletion
-        messages = [
-            {"role": "system", "content": (
-                "Eres un asistente experto en facturación y contratos. "
-                "Usa el contexto proporcionado para responder de forma breve y útil."
-            )},
-            {"role": "user", "content": f"Contexto:\n{contexto}\n\nMi pregunta: {user_input}"}
-        ]
+        # Montamos el mensaje final
+        # Ejemplo: Usamos ChatCompletions:
+        #   client.chat.completions.create(
+        #       model="gpt-4o",
+        #       messages=[{ "role": "user", "content": "..."}]
+        #   )
+        prompt = f"Contexto:\n{contexto}\nEl usuario pregunta: {user_input}"
 
         try:
-            # Llamamos a ChatCompletion
-            response = openai.ChatCompletion.create(
-                model="gpt-3.5-turbo",  # o "gpt-4" si lo tienes disponible
-                messages=messages,
-                max_tokens=300,
-                temperature=0.2
+            chat_completion = client.chat.completions.create(
+                model="gpt-4o",  # Cambiar a "gpt-3.5-turbo" si corresponde
+                messages=[
+                    {
+                        "role": "user",
+                        "content": prompt
+                    }
+                ],
+                store=True  # si quieres guardar la conversación en OpenAI
             )
-            respuesta = response.choices[0].message.content.strip()
-            st.write(respuesta)
+            respuesta = chat_completion.choices[0].message.content.strip()
+            st.success(respuesta)
+
         except Exception as e:
-            st.error(f"Error al llamar a OpenAI: {e}")
+            st.error(f"Error al llamar a OpenAI con la nueva librería: {e}")
 
 ########################################
-# MAIN STREAMLIT
+# MAIN DE STREAMLIT
 ########################################
 def main():
     supabase_client = init_connection()
 
     menu = ["Dashboard", "Chatbot"]
     choice = st.sidebar.radio("Menú", menu)
-
     if choice == "Dashboard":
         mostrar_dashboard(supabase_client)
     elif choice == "Chatbot":
