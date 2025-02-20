@@ -1,7 +1,3 @@
-########################################
-# app.py
-########################################
-
 import os
 import streamlit as st
 import pandas as pd
@@ -62,19 +58,23 @@ def mostrar_dashboard(supabase_client: Client):
     else:
         st.dataframe(df_facturas)
         # Ejemplo de gráfico de barras: total facturado por contrato
-        df_facturas["total"] = df_facturas["total"].astype(float)
-        fig = px.bar(df_facturas, x="contrato_id", y="total",
-                     title="Facturación por Contrato")
+        df_facturas["total"] = pd.to_numeric(df_facturas["total"], errors="coerce").fillna(0)
+        fig = px.bar(
+            df_facturas, 
+            x="contrato_id", 
+            y="total", 
+            title="Facturación por Contrato"
+        )
         st.plotly_chart(fig, use_container_width=True)
 
 ########################################
-# FUNCIÓN DEL CHATBOT (RAG SIMPLE)
+# FUNCIÓN DEL CHATBOT (con la nueva API ChatCompletion)
 ########################################
 def chatbot_rag(supabase_client: Client):
     st.title("Agente Conversacional")
-    st.write("Consulta información sobre tus contratos/facturas.")
+    st.write("Consulta información sobre tus contratos/facturas usando GPT-3.5/GPT-4.")
 
-    # Recuperamos la OpenAI API Key desde los secrets
+    # Clave de OpenAI desde los secrets
     openai_api_key = st.secrets.get("OPENAI_API_KEY", None)
     if not openai_api_key:
         st.error("No se encuentra la clave OPENAI_API_KEY en secrets. Por favor configúrala.")
@@ -96,29 +96,33 @@ def chatbot_rag(supabase_client: Client):
 
         matching_facturas = [f for f in facturas_data if contains_query(f)]
 
-        # Construimos un contexto mínimo con las facturas encontradas
+        # Construir un contexto mínimo con las facturas encontradas
         contexto = f"He encontrado {len(matching_facturas)} facturas:\n"
-        for f in matching_facturas[:3]:  # máximo 3 para no saturar
-            contexto += f"- Factura {f['numero_factura']}, concepto: {f['concepto']}, total: {f['total']}\n"
+        for f in matching_facturas[:3]:  # máx 3 facturas para no saturar
+            contexto += (
+                f"- Factura {f.get('numero_factura','')}, "
+                f"concepto: {f.get('concepto','')}, "
+                f"total: {f.get('total','')}\n"
+            )
 
-        # Prompt a OpenAI con ese contexto
-        prompt = f"""Eres un asistente experto en facturación y contratos. 
-        El usuario pregunta: {user_input}
-        
-        Basándote en este contexto real:
-        {contexto}
-
-        Responde de forma breve y útil:
-        """
+        # Montamos los mensajes para ChatCompletion
+        messages = [
+            {"role": "system", "content": (
+                "Eres un asistente experto en facturación y contratos. "
+                "Usa el contexto proporcionado para responder de forma breve y útil."
+            )},
+            {"role": "user", "content": f"Contexto:\n{contexto}\n\nMi pregunta: {user_input}"}
+        ]
 
         try:
-            completion = openai.Completion.create(
-                engine="text-davinci-003",  # o GPT-3.5-turbo, ajustando la llamada
-                prompt=prompt,
-                max_tokens=200,
+            # Llamamos a ChatCompletion
+            response = openai.ChatCompletion.create(
+                model="gpt-3.5-turbo",  # o "gpt-4" si lo tienes disponible
+                messages=messages,
+                max_tokens=300,
                 temperature=0.2
             )
-            respuesta = completion.choices[0].text.strip()
+            respuesta = response.choices[0].message.content.strip()
             st.write(respuesta)
         except Exception as e:
             st.error(f"Error al llamar a OpenAI: {e}")
