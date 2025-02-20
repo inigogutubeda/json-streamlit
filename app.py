@@ -1,7 +1,7 @@
 # rag/pipeline.py
 import pandas as pd
-from parser import interpret_question
-from db_queries import (
+from rag.parser import interpret_question
+from rag.db_queries import (
     ranking_gastos_por_centro,
     factura_mas_alta_year,
     ranking_proveedores_por_centro,
@@ -9,7 +9,7 @@ from db_queries import (
     get_facturas
     # etc
 )
-from .gpt import create_gpt_client, build_prompt, chat_completion
+from rag.gpt import create_gpt_client, build_prompt, chat_completion
 
 def process_user_question(supabase_client, user_input, openai_api_key=""):
     intent_data = interpret_question(user_input)
