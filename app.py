@@ -109,6 +109,24 @@ def chatbot_rag(supabase_client: Client):
         respuesta = process_user_question(supabase_client, user_input, openai_api_key)
         st.success(respuesta)
 
+def mostrar_documentos(supabase_client: Client):
+    st.title("Documentos asociados")
+    resp = supabase_client.table("documentos").select("*").execute()
+    data = resp.data or []
+    df_docs = pd.DataFrame(data)
+    if df_docs.empty:
+        st.write("No hay documentos registrados.")
+        return
+
+    st.dataframe(df_docs)
+
+    # Si guardas un 'url', puedes crear un enlace
+    for i, row in df_docs.iterrows():
+        doc_name = row["nombre_archivo"]
+        doc_url = row.get("url", "")
+        st.markdown(f"- **{doc_name}**: [Abrir PDF]({doc_url})" if doc_url else f"- **{doc_name}** (sin URL)")
+
+
 def main():
     supabase_client = init_connection()
 
