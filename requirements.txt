@@ -6,3 +6,8 @@ python-dotenv
 plotly
 pandas
 regex
+json
+PyPDF2
+pdfplumber
+requests
+beautifulsoup4
