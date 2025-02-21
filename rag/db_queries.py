@@ -1,13 +1,16 @@
 # rag/db_queries.py
 
 import pandas as pd
+import streamlit as st
 from supabase import Client
 from datetime import datetime
 
+@st.cache_data
 def get_contratos(supabase_client: Client) -> pd.DataFrame:
     resp = supabase_client.table("contratos").select("*").execute()
     return pd.DataFrame(resp.data or [])
 
+@st.cache_data
 def get_facturas(supabase_client: Client) -> pd.DataFrame:
     resp = supabase_client.table("facturas").select("*").execute()
     return pd.DataFrame(resp.data or [])

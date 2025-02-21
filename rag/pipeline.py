@@ -1,9 +1,42 @@
 # rag/pipeline.py
 import json
 from .gpt import GPTFunctionCaller
+from .parser import interpret_question
 from . import db_queries
 
 def process_user_question(supabase_client, user_input: str, openai_api_key: str) -> str:
+    # 1) Interpretar la pregunta
+    parsed_info = interpret_question(user_input)
+    intent = parsed_info.get("intent")
+
+    # 2) En base a la intención, llama la función local
+    if intent == "ranking_proveedores":
+        year = parsed_info.get("year", None)
+        result_str = db_queries.ranking_proveedores_por_importe(supabase_client, 5, year)
+        return result_str
+
+    elif intent == "max_factura_year":
+        year = parsed_info.get("year")
+        result_str = db_queries.factura_mas_alta_en_year(supabase_client, year)
+        return result_str
+
+    elif intent == "resumen_residencia":
+        centro = parsed_info.get("centro")
+        year = parsed_info.get("year")
+        result_str = db_queries.resumen_residencia_year(supabase_client, centro, year)
+        return result_str
+
+    elif intent == "ranking_gastos_centros":
+        year = parsed_info.get("year")
+        result_str = db_queries.ranking_gastos_centros(supabase_client, year)
+        return result_str
+
+    elif intent == "get_total_year":
+        year = parsed_info.get("year")
+        result_str = db_queries.total_gastos_year(supabase_client, year)
+        return result_str
+
+    # 3) Si no detecta la intención, sigue con la lógica GPT
     gpt_caller = GPTFunctionCaller(api_key=openai_api_key)
     step1 = gpt_caller.call_step_1(user_input)
     choice = step1.choices[0]

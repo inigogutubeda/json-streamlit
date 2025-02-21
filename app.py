@@ -9,6 +9,7 @@ from rag.db_queries import get_contratos, get_facturas, top_conceptos_global
 
 st.set_page_config(page_title="POC Residencias", layout="wide")
 
+@st.cache_data  # Cachea la conexión mientras no cambien secrets
 def init_connection():
     url = st.secrets["SUPABASE_URL"]
     key = st.secrets["SUPABASE_KEY"]
