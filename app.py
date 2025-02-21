@@ -119,7 +119,7 @@ def vista_por_residencia():
     df_fact = get_facturas(supabase_client)
     df_fact["total"] = pd.to_numeric(df_fact["total"], errors="coerce").fillna(0)
 
-    # CORREGIDO: Cierra correctamente el corchete
+    
     if centro_sel != "(Todos)":
         df_contr = df_contr[df_contr["centro"] == centro_sel]
         cids = df_contr["id"].unique().tolist()
@@ -175,7 +175,8 @@ def vista_chatbot():
     if "chat_history" not in st.session_state:
         st.session_state["chat_history"] = []
 
-    st.write("Preguntas de ejemplo: “¿En qué residencia gastamos más en 2024?”")
+    st.write("Preguntas de ejemplo: “¿En qué residencia gastamos más en 2024?” o “¿Cuántas facturas tenemos?”,“¿Cuál es la factura más reciente?”"
+             )
     user_input = st.text_input("Escribe tu pregunta:", "")
     if st.button("Enviar"):
         if user_input.strip():
