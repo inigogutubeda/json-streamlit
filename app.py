@@ -12,7 +12,7 @@ from rag.pipeline import process_user_question
 
 # Importa (para el dashboard) las funciones que consultan la BD
 # (asegúrate de tener 'rag/db_queries.py' con get_contratos, get_facturas, top_conceptos_global, etc.)
-from rag.db_queries import  get_contratos,get_facturas,facturas_importe_mayor,proveedor_mas_contratos,factura_mas_reciente,gasto_en_rango_fechas,contratos_vencen_antes_de
+from rag.db_queries import  get_contratos,get_facturas,top_conceptos_global,facturas_importe_mayor,proveedor_mas_contratos,factura_mas_reciente,gasto_en_rango_fechas,contratos_vencen_antes_de
 
 ########################################
 # CONFIGURACIÓN STREAMLIT
