@@ -1,37 +1,25 @@
 # rag/pipeline.py
-
 import json
 from .gpt import GPTFunctionCaller
 from . import db_queries
 
 def process_user_question(supabase_client, user_input: str, openai_api_key: str) -> str:
-    """
-    - Crea un GPTFunctionCaller con la key
-    - Step 1: GPT "function calling"
-    - Step 2: si GPT llama a function, la ejecutamos localmente y 
-      le pasamos el resultado en un 'role=function' => GPT produce la 
-      respuesta final "conversacional"
-    """
     gpt_caller = GPTFunctionCaller(api_key=openai_api_key)
+    step1_resp = gpt_caller.call_step_1(user_input)
+    choice = step1_resp.choices[0]
 
-    step1 = gpt_caller.call_step_1(user_input)
-    choice = step1.choices[0]
-    finish_reason = choice["finish_reason"]
-
-    if finish_reason == "function_call":
-        # GPT invoca una de nuestras functions
-        fn_call = choice["message"]["function_call"]
+    # En la nueva API, check if there's a function_call
+    fn_call = choice.message.get("function_call", None)
+    if fn_call:
+        # GPT quiere llamar a una function
         fn_name = fn_call["name"]
-        fn_args_json = fn_call["arguments"]
-
-        # Parseamos los argumentos
+        fn_args_str = fn_call.get("arguments","{}")
         try:
-            fn_args = json.loads(fn_args_json)
+            fn_args = json.loads(fn_args_str)
         except:
             fn_args = {}
 
-        # Llamar la función local
-        result_str = ""
+        # Llamamos a la función local
         if fn_name == "facturas_importe_mayor":
             importe = fn_args.get("importe",0)
             result_str = db_queries.facturas_importe_mayor(supabase_client, importe)
@@ -52,12 +40,11 @@ def process_user_question(supabase_client, user_input: str, openai_api_key: str)
             result_str = db_queries.contratos_vencen_antes_de(supabase_client, fecha_lim)
 
         else:
-            # Function no reconocida
             result_str = f"Function '{fn_name}' no está implementada localmente."
 
-        # Step 2: GPT produce la respuesta final
-        final_msg = gpt_caller.call_step_2(fn_name, result_str)
-        return final_msg
+        # Llamamos step 2 => GPT produce la respuesta final
+        final_answer = gpt_caller.call_step_2(fn_name, result_str)
+        return final_answer
     else:
-        # GPT no llamó a function => devuelvo el texto
-        return choice["message"]["content"].strip()
+        # GPT no llamó a ninguna función. Devolvemos su texto normal
+        return choice.message["content"].strip()

@@ -6,19 +6,15 @@ import pandas as pd
 import plotly.express as px
 from supabase import create_client
 
-# Lógica Chatbot
 from rag.pipeline import process_user_question
-
-# BD queries para el Dashboard
 from rag.db_queries import get_contratos, get_facturas, top_conceptos_global
 
 st.set_page_config(
-    page_title="POC Residencias (Function Calling)",
+    page_title="POC Residencias (GPT-4 function calling)",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
-# Opcional: algo de CSS
 CUSTOM_CSS = """
 <style>
 .main > div {
@@ -62,9 +58,10 @@ def init_connection():
 
 supabase_client = init_connection()
 
-########### SECCIONES DEL DASHBOARD ###########
+######## Dashboard sections ########
 def vista_general_dashboard():
     st.subheader("Visión General")
+
     df_contr = get_contratos(supabase_client)
     df_fact = get_facturas(supabase_client)
 
@@ -75,11 +72,16 @@ def vista_general_dashboard():
         st.metric("Facturas totales", len(df_fact))
     with col3:
         df_fact["total"] = pd.to_numeric(df_fact["total"], errors="coerce").fillna(0)
-        st.metric("Total facturado", f"{df_fact['total'].sum():,.2f} €")
+        total_sum = df_fact["total"].sum()
+        st.metric("Total facturado", f"{total_sum:,.2f} €")
 
     st.markdown("---")
     st.write("**Contratos**")
-    st.dataframe(df_contr) if not df_contr.empty else st.warning("No hay contratos.")
+    if df_contr.empty:
+        st.warning("No hay contratos.")
+    else:
+        st.dataframe(df_contr)
+
     st.write("**Facturas**")
     if df_fact.empty:
         st.warning("No hay facturas.")
@@ -100,13 +102,14 @@ def vista_por_residencia():
     df_fact["total"] = pd.to_numeric(df_fact["total"], errors="coerce").fillna(0)
 
     if centro_sel != "(Todos)":
-        df_contr = df_contr[df_contr["centro"] == centro_sel]
-        cids = df_contr["id"].unique().tolist()
+        df_contr_sel = df_contr[df_contr["centro"] == centro_sel]
+        cids = df_contr_sel["id"].unique().tolist()
         df_fact = df_fact[df_fact["contrato_id"].isin(cids)]
+    else:
+        df_contr_sel = df_contr
 
     st.write(f"**Contratos en {centro_sel}**")
-    st.dataframe(df_contr)
-
+    st.dataframe(df_contr_sel)
     st.write(f"**Facturas en {centro_sel}**")
     if df_fact.empty:
         st.info("No hay facturas para este centro.")
@@ -116,12 +119,13 @@ def vista_por_residencia():
     gasto_total = df_fact["total"].sum()
     st.metric(f"Gasto total en {centro_sel}", f"{gasto_total:,.2f} €")
 
+    # Note: x="numero_factura" is the column in your DB
     fig = px.bar(
         df_fact,
-        x="numero",
+        x="numero_factura",
         y="total",
         title=f"Facturación {centro_sel}",
-        labels={"numero": "Factura", "total": "Importe (€)"}
+        labels={"numero_factura": "Factura", "total": "Importe (€)"}
     )
     st.plotly_chart(fig, use_container_width=True)
 
@@ -143,8 +147,7 @@ def vista_top_conceptos():
     )
     st.plotly_chart(fig, use_container_width=True)
 
-
-########### SECCIÓN DEL CHATBOT ###########
+######## Chatbot ########
 def vista_chatbot():
     st.header("Chatbot con GPT-4 function calling (sin regex)")
 
@@ -168,14 +171,10 @@ def vista_chatbot():
         else:
             st.markdown(f'<div class="bot-message">{msg}</div>', unsafe_allow_html=True)
 
-########################################
-# MAIN
-########################################
 def main():
     st.sidebar.title("POC Residencias")
-    section = st.sidebar.radio("Navegación", ["Dashboard", "Chatbot"])
-
-    if section == "Dashboard":
+    op = st.sidebar.radio("Navegación", ["Dashboard", "Chatbot"])
+    if op == "Dashboard":
         tabs = st.tabs(["Visión General", "Por Residencia", "Top Conceptos"])
         with tabs[0]:
             vista_general_dashboard()
