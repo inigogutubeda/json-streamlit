@@ -38,9 +38,25 @@ def process_user_question(supabase_client, user_input: str, openai_api_key: str)
         elif fn_name == "contratos_vencen_antes_de":
             fl = fn_args.get("fecha_limite","")
             result_str = db_queries.contratos_vencen_antes_de(supabase_client, fl)
+        
+        elif fn_name == "gasto_proveedor_en_year":
+            proveedor = fn_args.get("proveedor","")
+            year = fn_args.get("year",0)
+            result_str = db_queries.gasto_proveedor_en_year(supabase_client, proveedor, year)
 
+        elif fn_name == "facturas_mas_elevadas":
+            top_n = fn_args.get("top_n",5)
+            result_str = db_queries.facturas_mas_elevadas(supabase_client, top_n)
+
+        elif fn_name == "ranking_proveedores_por_importe":
+            limit = fn_args.get("limit",5)
+            year = fn_args.get("year", None)
+            result_str = db_queries.ranking_proveedores_por_importe(supabase_client, limit, year)
+
+        
         else:
             result_str = f"No hay una función implementada localmente para '{fn_name}'."
+        
 
         # 2ª llamada: GPT produce respuesta final
         final = gpt_caller.call_step_2(fn_name, result_str)

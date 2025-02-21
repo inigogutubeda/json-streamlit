@@ -112,3 +112,97 @@ def top_conceptos_global(supabase_client: Client) -> pd.DataFrame:
     df_group = df_f.groupby("concepto")["total"].sum().reset_index()
     df_group = df_group.sort_values("total", ascending=False)
     return df_group
+
+def gasto_proveedor_en_year(supabase_client: Client, proveedor: str, year: int) -> str:
+    """
+    Filtra facturas de un proveedor (buscando substring en 'nombre_proveedor')
+    y el año (en 'fecha_factura'), sumando 'total'.
+    """
+    # 1) Buscar ID del proveedor por substring
+    resp_prov = supabase_client.table("proveedores").select("*").execute()
+    df_prov = pd.DataFrame(resp_prov.data or [])
+    if df_prov.empty:
+        return "No hay proveedores."
+
+    df_prov["nombre_lower"] = df_prov["nombre_proveedor"].str.lower()
+    match = df_prov[df_prov["nombre_lower"].str.contains(proveedor.lower())]
+    if match.empty:
+        return f"No encontré un proveedor que coincida con '{proveedor}'."
+
+    # Podría haber varios, cogemos todos
+    prov_ids = match["id"].unique().tolist()
+
+    # 2) Contratos con esos proveedores
+    df_contr = get_contratos(supabase_client)
+    df_contr = df_contr[df_contr["proveedor_id"].isin(prov_ids)]
+    if df_contr.empty:
+        return f"No hay contratos con proveedor '{proveedor}'."
+
+    cids = df_contr["id"].unique().tolist()
+
+    # 3) Facturas de esos contratos en el year
+    df_fact = get_facturas(supabase_client)
+    df_fact = df_fact[df_fact["contrato_id"].isin(cids)]
+    df_fact["fecha_factura"] = pd.to_datetime(df_fact["fecha_factura"], errors="coerce")
+    df_fact["year"] = df_fact["fecha_factura"].dt.year
+    df_fact["total"] = pd.to_numeric(df_fact["total"], errors="coerce").fillna(0)
+    df_fact = df_fact[df_fact["year"] == year]
+
+    if df_fact.empty:
+        return f"No hay facturas de '{proveedor}' en el año {year}."
+
+    suma = df_fact["total"].sum()
+    return (f"En {year}, para el proveedor '{proveedor}', "
+            f"hay {len(df_fact)} facturas con un total de {suma:.2f}.")
+
+
+def facturas_mas_elevadas(supabase_client: Client, top_n: int=5) -> str:
+    """
+    Retorna las facturas con mayor 'total' (por defecto, top 5).
+    """
+    df_fact = get_facturas(supabase_client)
+    if df_fact.empty:
+        return "No hay facturas."
+    df_fact["total"] = pd.to_numeric(df_fact["total"], errors="coerce").fillna(0)
+    df_fact = df_fact.sort_values("total", ascending=False).head(top_n)
+    lines = []
+    for _, row in df_fact.iterrows():
+        lines.append(f"- Factura '{row['numero_factura']}' total={row['total']}")
+    return (f"Las {top_n} facturas más elevadas son:\n" + "\n".join(lines))
+
+
+def ranking_proveedores_por_importe(supabase_client: Client, limit: int=5, year: int=None) -> str:
+    """
+    Retorna un ranking de proveedores por el total de facturas.
+    - limit: cuántos mostrar
+    - year: si se especifica, filtra por ese año
+    """
+    df_fact = get_facturas(supabase_client)
+    if df_fact.empty:
+        return "No hay facturas."
+    df_fact["fecha_factura"] = pd.to_datetime(df_fact["fecha_factura"], errors="coerce")
+    df_fact["total"] = pd.to_numeric(df_fact["total"], errors="coerce").fillna(0)
+    if year:
+        df_fact["year"] = df_fact["fecha_factura"].dt.year
+        df_fact = df_fact[df_fact["year"] == year]
+
+    # Contratos => para vincular a proveedores
+    df_contr = get_contratos(supabase_client)
+    df_merge = df_fact.merge(df_contr, left_on="contrato_id", right_on="id", suffixes=("_fact","_contr"))
+    if df_merge.empty:
+        return "No encontré facturas con contratos asociados."
+
+    # Merge con proveedores
+    resp_prov = supabase_client.table("proveedores").select("*").execute()
+    df_prov = pd.DataFrame(resp_prov.data or [])
+    df_merge = df_merge.merge(df_prov, left_on="proveedor_id", right_on="id", suffixes=("_ctr","_prov"))
+    if df_merge.empty:
+        return "No encontré proveedores asociados a estas facturas."
+
+    # Agrupar por 'nombre_proveedor', sum de total
+    df_rank = df_merge.groupby("nombre_proveedor")["total"].sum().reset_index()
+    df_rank = df_rank.sort_values("total", ascending=False).head(limit)
+    lines = []
+    for _, row in df_rank.iterrows():
+        lines.append(f"- {row['nombre_proveedor']}: {row['total']:.2f}")
+    return ("Ranking de proveedores por importe:\n" + "\n".join(lines))
