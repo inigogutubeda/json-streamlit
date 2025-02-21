@@ -3,6 +3,7 @@
 import pandas as pd
 from supabase import Client
 from datetime import datetime
+from datetime import timedelta
 
 def get_contratos(supabase_client: Client) -> pd.DataFrame:
     resp = supabase_client.table("contratos").select("*").execute()
@@ -11,11 +12,6 @@ def get_contratos(supabase_client: Client) -> pd.DataFrame:
 def get_facturas(supabase_client: Client) -> pd.DataFrame:
     resp = supabase_client.table("facturas").select("*").execute()
     return pd.DataFrame(resp.data or [])
-
-
-########################################
-# Funciones existentes
-########################################
 
 def facturas_importe_mayor(supabase_client: Client, importe: float) -> str:
     df_fact = get_facturas(supabase_client)
@@ -107,11 +103,6 @@ def contratos_vencen_antes_de(supabase_client: Client, fecha_limite: str) -> str
         lines.append(f"- Contrato ID {row['id']}, centro={row['centro']}, vence={row['fecha_vencimiento']}")
     return (f"Hay {len(df_fil)} contratos que vencen antes de {fecha_limite}:\n" + "\n".join(lines))
 
-
-########################################
-# NUEVAS FUNCIONES
-########################################
-
 def gasto_proveedor_en_year(supabase_client: Client, proveedor: str, year: int) -> str:
     """
     Filtra facturas de un proveedor (buscando substring en 'nombre_proveedor')
@@ -154,7 +145,6 @@ def gasto_proveedor_en_year(supabase_client: Client, proveedor: str, year: int) 
     return (f"En {year}, para el proveedor '{proveedor}', "
             f"hay {len(df_fact)} facturas con un total de {suma:.2f}.")
 
-
 def facturas_mas_elevadas(supabase_client: Client, top_n: int=5) -> str:
     """
     Retorna las facturas con mayor 'total' (por defecto, top 5).
@@ -168,7 +158,6 @@ def facturas_mas_elevadas(supabase_client: Client, top_n: int=5) -> str:
     for _, row in df_fact.iterrows():
         lines.append(f"- Factura '{row['numero_factura']}' total={row['total']}")
     return (f"Las {top_n} facturas más elevadas son:\n" + "\n".join(lines))
-
 
 def ranking_proveedores_por_importe(supabase_client: Client, limit: int=5, year: int=None) -> str:
     """
@@ -218,3 +207,121 @@ def top_conceptos_global(supabase_client: Client) -> pd.DataFrame:
     df_group = df_fact.groupby("concepto")["total"].sum().reset_index()
     df_group = df_group.sort_values("total", ascending=False)
     return df_group
+
+def get_facturas_pendientes(supabase_client: Client) -> str:
+    """
+    Devuelve las facturas pendientes de pago.
+    """
+    df_fact = get_facturas(supabase_client)
+    if df_fact.empty:
+        return "No hay facturas registradas."
+    
+    df_fact = df_fact[df_fact['estado'] == 'pendiente']
+    if df_fact.empty:
+        return "No hay facturas pendientes de pago."
+    
+    total_pendiente = df_fact["total"].sum()
+    return f"Hay {len(df_fact)} facturas pendientes con un total de {total_pendiente:.2f} €."
+
+def get_gastos_por_mes_categoria(supabase_client: Client) -> pd.DataFrame:
+    """
+    Devuelve un resumen de gastos agrupados por mes y categoría.
+    """
+    df_fact = get_facturas(supabase_client)
+    if df_fact.empty:
+        return "No hay facturas registradas."
+    
+    df_fact["fecha_factura"] = pd.to_datetime(df_fact["fecha_factura"], errors="coerce")
+    df_fact.dropna(subset=["fecha_factura"], inplace=True)
+    df_fact["mes"] = df_fact["fecha_factura"].dt.strftime("%Y-%m")
+    
+    df_resumen = df_fact.groupby(["mes", "categoria"])["total"].sum().reset_index()
+    return df_resumen
+
+def get_gastos_por_residencia(supabase_client: Client, residencia: str) -> str:
+    """
+    Devuelve el gasto total de una residencia específica.
+    """
+    df_fact = get_facturas(supabase_client)
+    df_contr = get_contratos(supabase_client)
+    
+    df_merge = df_fact.merge(df_contr, left_on="contrato_id", right_on="id")
+    df_merge = df_merge[df_merge["centro"] == residencia]
+    
+    if df_merge.empty:
+        return f"No se encontraron gastos para la residencia {residencia}."
+    
+    total_gasto = df_merge["total"].sum()
+    return f"El gasto total para la residencia {residencia} es de {total_gasto:.2f} €."
+
+def get_mantenimientos_pendientes(supabase_client: Client) -> str:
+    """
+    Retorna los mantenimientos programados en los próximos 30 días.
+    """
+    df_mant = supabase_client.table("mantenimientos").select("*").execute()
+    df_mant = pd.DataFrame(df_mant.data or [])
+    
+    if df_mant.empty:
+        return "No hay mantenimientos programados."
+    
+    df_mant["fecha_programada"] = pd.to_datetime(df_mant["fecha_programada"], errors="coerce")
+    df_mant.dropna(subset=["fecha_programada"], inplace=True)
+    fecha_limite = datetime.today() + timedelta(days=30)
+    df_mant = df_mant[df_mant["fecha_programada"] <= fecha_limite]
+    
+    return f"Hay {len(df_mant)} mantenimientos programados en los próximos 30 días."
+
+def get_proveedores_con_contratos_vigentes(supabase_client: Client) -> pd.DataFrame:
+    """
+    Devuelve un listado de proveedores con contratos activos.
+    """
+    df_contr = get_contratos(supabase_client)
+    df_prov = supabase_client.table("proveedores").select("*").execute()
+    df_prov = pd.DataFrame(df_prov.data or [])
+    
+    df_merge = df_contr.merge(df_prov, left_on="proveedor_id", right_on="id")
+    df_merge = df_merge[df_merge["fecha_vencimiento"] > datetime.today().strftime("%Y-%m-%d")]
+    return df_merge[["nombre_proveedor", "fecha_vencimiento"]]
+
+def get_facturas_por_proveedor(supabase_client: Client, proveedor: str, year: int) -> str:
+    """
+    Retorna las facturas de un proveedor específico en un año.
+    """
+    df_fact = get_facturas(supabase_client)
+    df_fact["fecha_factura"] = pd.to_datetime(df_fact["fecha_factura"], errors="coerce")
+    df_fact["year"] = df_fact["fecha_factura"].dt.year
+    df_fact = df_fact[(df_fact["year"] == year) & (df_fact["proveedor"] == proveedor)]
+    
+    if df_fact.empty:
+        return f"No hay facturas de {proveedor} en {year}."
+    
+    total = df_fact["total"].sum()
+    return f"El total facturado por {proveedor} en {year} es de {total:.2f} €."
+
+def get_contratos_vencen_proximos_meses(supabase_client: Client) -> str:
+    """
+    Devuelve los contratos que vencen en los próximos 6 meses.
+    """
+    df_contr = get_contratos(supabase_client)
+    df_contr["fecha_vencimiento"] = pd.to_datetime(df_contr["fecha_vencimiento"], errors="coerce")
+    df_contr.dropna(subset=["fecha_vencimiento"], inplace=True)
+    fecha_limite = datetime.today() + timedelta(days=180)
+    df_contr = df_contr[df_contr["fecha_vencimiento"] <= fecha_limite]
+    
+    if df_contr.empty:
+        return "No hay contratos próximos a vencer."
+    return f"Hay {len(df_contr)} contratos que vencen en los próximos 6 meses."
+
+def get_top_centros_mayores_gastos(supabase_client: Client, year: int) -> pd.DataFrame:
+    """
+    Retorna los 5 centros con mayores gastos en un año.
+    """
+    df_fact = get_facturas(supabase_client)
+    df_contr = get_contratos(supabase_client)
+    df_fact["fecha_factura"] = pd.to_datetime(df_fact["fecha_factura"], errors="coerce")
+    df_fact["year"] = df_fact["fecha_factura"].dt.year
+    
+    df_merge = df_fact.merge(df_contr, left_on="contrato_id", right_on="id")
+    df_merge = df_merge[df_merge["year"] == year]
+    df_top = df_merge.groupby("centro")["total"].sum().reset_index().sort_values("total", ascending=False).head(5)
+    return df_top

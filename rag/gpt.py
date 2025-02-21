@@ -1,5 +1,3 @@
-# rag/gpt.py"
-# from openai import OpenAI
 from openai import OpenAI
 
 class GPTFunctionCaller:
@@ -92,6 +90,60 @@ class GPTFunctionCaller:
                         "year":{"type":"number","description":"(opcional) filtrar facturas por este año"}
                     },
                     "required":[]  # none strictly required
+                }
+            },
+            {
+                "name": "facturas_pendientes",
+                "description": "Devuelve las facturas pendientes de pago.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {}
+                }
+            },
+            {
+                "name": "gastos_por_mes_categoria",
+                "description": "Resumen de gastos agrupados por mes y categoría.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {}
+                }
+            },
+            {
+                "name": "gastos_por_residencia",
+                "description": "Devuelve el gasto total de una residencia específica.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "residencia": {"type": "string"}
+                    },
+                    "required": ["residencia"]
+                }
+            },
+            {
+                "name": "mantenimientos_pendientes",
+                "description": "Retorna los mantenimientos programados en los próximos 30 días.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {}
+                }
+            },
+            {
+                "name": "contratos_vencen_proximos_meses",
+                "description": "Devuelve los contratos que vencen en los próximos 6 meses.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {}
+                }
+            },
+            {
+                "name": "top_centros_mayores_gastos",
+                "description": "Retorna los 5 centros con mayores gastos en un año.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "year": {"type": "number"}
+                    },
+                    "required": ["year"]
                 }
             }
         ]
