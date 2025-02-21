@@ -1,19 +1,21 @@
 # rag/db_queries.py
 
 import pandas as pd
-import streamlit as st
 from supabase import Client
 from datetime import datetime
 
-@st.cache_data
 def get_contratos(supabase_client: Client) -> pd.DataFrame:
     resp = supabase_client.table("contratos").select("*").execute()
     return pd.DataFrame(resp.data or [])
 
-@st.cache_data
 def get_facturas(supabase_client: Client) -> pd.DataFrame:
     resp = supabase_client.table("facturas").select("*").execute()
     return pd.DataFrame(resp.data or [])
+
+
+########################################
+# Funciones existentes
+########################################
 
 def facturas_importe_mayor(supabase_client: Client, importe: float) -> str:
     df_fact = get_facturas(supabase_client)
@@ -79,6 +81,7 @@ def gasto_en_rango_fechas(supabase_client: Client, fecha_inicio: str, fecha_fin:
     df_fact["fecha_factura"] = pd.to_datetime(df_fact["fecha_factura"], errors="coerce")
     df_fact["total"] = pd.to_numeric(df_fact["total"], errors="coerce").fillna(0)
     df_fact = df_fact.dropna(subset=["fecha_factura"])
+
     df_fil = df_fact[(df_fact["fecha_factura"] >= fi) & (df_fact["fecha_factura"] <= ff)]
     suma = df_fil["total"].sum()
     return f"El gasto total entre {fecha_inicio} y {fecha_fin} es {suma:.2f}."
@@ -104,17 +107,10 @@ def contratos_vencen_antes_de(supabase_client: Client, fecha_limite: str) -> str
         lines.append(f"- Contrato ID {row['id']}, centro={row['centro']}, vence={row['fecha_vencimiento']}")
     return (f"Hay {len(df_fil)} contratos que vencen antes de {fecha_limite}:\n" + "\n".join(lines))
 
-def top_conceptos_global(supabase_client: Client) -> pd.DataFrame:
-    """
-    Ranking de conceptos en facturas, para mostrar en el Dashboard (ej: vista_top_conceptos).
-    """
-    df_f = get_facturas(supabase_client)
-    if df_f.empty:
-        return pd.DataFrame()
-    df_f["total"] = pd.to_numeric(df_f["total"], errors="coerce").fillna(0)
-    df_group = df_f.groupby("concepto")["total"].sum().reset_index()
-    df_group = df_group.sort_values("total", ascending=False)
-    return df_group
+
+########################################
+# NUEVAS FUNCIONES
+########################################
 
 def gasto_proveedor_en_year(supabase_client: Client, proveedor: str, year: int) -> str:
     """
@@ -209,3 +205,16 @@ def ranking_proveedores_por_importe(supabase_client: Client, limit: int=5, year:
     for _, row in df_rank.iterrows():
         lines.append(f"- {row['nombre_proveedor']}: {row['total']:.2f}")
     return ("Ranking de proveedores por importe:\n" + "\n".join(lines))
+
+def top_conceptos_global(supabase_client: Client) -> pd.DataFrame:
+    """
+    Retorna un ranking de conceptos con sum(total).
+    """
+    df_fact = get_facturas(supabase_client)
+    if df_fact.empty:
+        return pd.DataFrame()
+
+    df_fact["total"] = pd.to_numeric(df_fact["total"], errors="coerce").fillna(0)
+    df_group = df_fact.groupby("concepto")["total"].sum().reset_index()
+    df_group = df_group.sort_values("total", ascending=False)
+    return df_group

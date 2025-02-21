@@ -1,5 +1,5 @@
-# rag/gpt.py
-
+# rag/gpt.py"
+# from openai import OpenAI
 from openai import OpenAI
 
 class GPTFunctionCaller:
