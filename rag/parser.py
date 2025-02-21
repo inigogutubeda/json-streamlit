@@ -3,6 +3,7 @@ import json
 from datetime import datetime
 from openai import OpenAI
 from .gpt import GPTFunctionCaller
+from . import db_queries
 
 def interpret_question(user_input: str, api_key: str) -> dict:
     """
