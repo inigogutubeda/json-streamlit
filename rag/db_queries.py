@@ -1,5 +1,3 @@
-# rag/db_queries.py
-
 import pandas as pd
 from supabase import Client
 from datetime import datetime

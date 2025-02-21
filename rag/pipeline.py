@@ -7,12 +7,15 @@ from .gpt import GPTFunctionCaller
 from . import db_queries
 
 def process_user_question(supabase_client, user_input: str, openai_api_key: str) -> str:
+    """
+    Procesa la pregunta del usuario, detectando la intención y llamando la función correspondiente.
+    """
     # Intentamos interpretar la intención del usuario con regex
     parsed_intent = interpret_question(user_input, openai_api_key)
     fn_name = parsed_intent.get("intent")
 
+    # Si no se detectó una intención válida, intentamos con GPT
     if fn_name == "fallback":
-        # Si no hay coincidencia en regex, llamamos a GPT
         gpt_caller = GPTFunctionCaller(api_key=openai_api_key)
         step1 = gpt_caller.call_step_1(user_input)
         choice = step1.choices[0]
@@ -26,78 +29,34 @@ def process_user_question(supabase_client, user_input: str, openai_api_key: str)
             except:
                 pass
 
-    # Ejecutamos la función correspondiente según la intención detectada
-    if fn_name == "facturas_importe_mayor":
-        importe = parsed_intent.get("importe", 0)
-        result_str = db_queries.facturas_importe_mayor(supabase_client, importe)
-    elif fn_name == "proveedor_mas_contratos":
-        result_str = db_queries.proveedor_mas_contratos(supabase_client)
-    elif fn_name == "factura_mas_reciente":
-        result_str = db_queries.factura_mas_reciente(supabase_client)
-    elif fn_name == "gasto_en_rango_fechas":
-        fi = parsed_intent.get("fecha_inicio", "")
-        ff = parsed_intent.get("fecha_fin", "")
-        result_str = db_queries.gasto_en_rango_fechas(supabase_client, fi, ff)
-    elif fn_name == "contratos_vencen_antes_de":
-        fecha = parsed_intent.get("fecha_limite", "")
-        result_str = db_queries.contratos_vencen_antes_de(supabase_client, fecha)
-    elif fn_name == "gasto_proveedor_en_year":
-        proveedor = parsed_intent.get("proveedor", "")
-        year = parsed_intent.get("year", 0)
-        result_str = db_queries.gasto_proveedor_en_year(supabase_client, proveedor, year)
-    elif fn_name == "facturas_mas_elevadas":
-        top_n = parsed_intent.get("top_n", 5)
-        result_str = db_queries.facturas_mas_elevadas(supabase_client, top_n)
-    elif fn_name == "ranking_proveedores_por_importe":
-        limit = parsed_intent.get("limit", 5)
-        year = parsed_intent.get("year", None)
-        result_str = db_queries.ranking_proveedores_por_importe(supabase_client, limit, year)
-    elif fn_name == "facturas_pendientes":
-        result_str = db_queries.get_facturas_pendientes(supabase_client)
-    elif fn_name == "gastos_por_mes_categoria":
-        result_str = db_queries.get_gastos_por_mes_categoria(supabase_client).to_string()
-    elif fn_name == "gastos_por_residencia":
-        residencia = parsed_intent.get("residencia", "")
-        result_str = db_queries.get_gastos_por_residencia(supabase_client, residencia)
-    elif fn_name == "mantenimientos_pendientes":
-        result_str = db_queries.get_mantenimientos_pendientes(supabase_client)
-    elif fn_name == "proveedores_con_contratos_vigentes":
-        result_str = db_queries.get_proveedores_con_contratos_vigentes(supabase_client).to_string()
-    elif fn_name == "facturas_por_proveedor":
-        proveedor = parsed_intent.get("proveedor", "")
-        year = parsed_intent.get("year", 0)
-        result_str = db_queries.get_facturas_por_proveedor(supabase_client, proveedor, year)
-    elif fn_name == "contratos_vencen_proximos_meses":
-        result_str = db_queries.get_contratos_vencen_proximos_meses(supabase_client)
-    elif fn_name == "top_centros_mayores_gastos":
-        year = parsed_intent.get("year", 0)
-        result_str = db_queries.get_top_centros_mayores_gastos(supabase_client, year).to_string()
-    elif fn_name == "ranking_gastos_centros":
-        year = parsed_intent.get("year", 0)
-        result_str = db_queries.get_top_centros_mayores_gastos(supabase_client, year).to_string()
-    elif fn_name == "get_total_year":
-        year = parsed_intent.get("year", 0)
-        result_str = db_queries.gasto_en_rango_fechas(supabase_client, f"01/01/{year}", f"31/12/{year}")
-    elif fn_name == "contrato_mas_costoso":
-        result_str = db_queries.contrato_mas_costoso(supabase_client)
-    elif fn_name == "facturas_de_proveedor":
-        proveedor = parsed_intent.get("proveedor", "")
-        year = parsed_intent.get("year", 0)
-        result_str = db_queries.facturas_de_proveedor(supabase_client, proveedor, year)
+    # Mapeo de funciones disponibles
+    function_mapping = {
+        "facturas_importe_mayor": lambda: db_queries.facturas_importe_mayor(supabase_client, parsed_intent.get("importe", 0)),
+        "proveedor_mas_contratos": lambda: db_queries.proveedor_mas_contratos(supabase_client),
+        "factura_mas_reciente": lambda: db_queries.factura_mas_reciente(supabase_client),
+        "gasto_en_rango_fechas": lambda: db_queries.gasto_en_rango_fechas(supabase_client, parsed_intent.get("fecha_inicio", ""), parsed_intent.get("fecha_fin", "")),
+        "contratos_vencen_antes_de": lambda: db_queries.contratos_vencen_antes_de(supabase_client, parsed_intent.get("fecha_limite", "")),
+        "gasto_proveedor_en_year": lambda: db_queries.gasto_proveedor_en_year(supabase_client, parsed_intent.get("proveedor", ""), parsed_intent.get("year", 0)),
+        "facturas_mas_elevadas": lambda: db_queries.facturas_mas_elevadas(supabase_client, parsed_intent.get("top_n", 5)),
+        "ranking_proveedores_por_importe": lambda: db_queries.ranking_proveedores_por_importe(supabase_client, parsed_intent.get("limit", 5), parsed_intent.get("year", None)),
+        "facturas_pendientes": lambda: db_queries.get_facturas_pendientes(supabase_client),
+        "gastos_por_mes_categoria": lambda: db_queries.get_gastos_por_mes_categoria(supabase_client).to_string(),
+        "gastos_por_residencia": lambda: db_queries.get_gastos_por_residencia(supabase_client, parsed_intent.get("residencia", "")),
+        "mantenimientos_pendientes": lambda: db_queries.get_mantenimientos_pendientes(supabase_client),
+        "proveedores_con_contratos_vigentes": lambda: db_queries.get_proveedores_con_contratos_vigentes(supabase_client).to_string(),
+        "facturas_por_proveedor": lambda: db_queries.get_facturas_por_proveedor(supabase_client, parsed_intent.get("proveedor", ""), parsed_intent.get("year", 0)),
+        "contratos_vencen_proximos_meses": lambda: db_queries.get_contratos_vencen_proximos_meses(supabase_client),
+        "top_centros_mayores_gastos": lambda: db_queries.get_top_centros_mayores_gastos(supabase_client, parsed_intent.get("year", 0)).to_string(),
+        "ranking_gastos_centros": lambda: db_queries.get_top_centros_mayores_gastos(supabase_client, parsed_intent.get("year", 0)).to_string(),
+        "get_total_year": lambda: db_queries.gasto_en_rango_fechas(supabase_client, f"01/01/{parsed_intent.get('year', 0)}", f"31/12/{parsed_intent.get('year', 0)}"),
+        "contrato_mas_costoso": lambda: db_queries.contrato_mas_costoso(supabase_client),
+        "facturas_de_proveedor": lambda: db_queries.facturas_de_proveedor(supabase_client, parsed_intent.get("proveedor", ""), parsed_intent.get("year", 0)),
+        "gasto_por_tipo_servicio": lambda: db_queries.gasto_por_tipo_servicio(supabase_client, parsed_intent.get("tipo_servicio", "")),
+        "ranking_tipos_servicios": lambda: db_queries.ranking_tipos_servicios(supabase_client),
+        "top_contratos_mas_costosos": lambda: db_queries.top_contratos_mas_costosos(supabase_client),
+    }
 
-    elif fn_name == "gasto_por_tipo_servicio":
-        tipo_servicio = parsed_intent.get("tipo_servicio", "")
-        result_str = db_queries.gasto_por_tipo_servicio(supabase_client, tipo_servicio)
-
-    elif fn_name == "ranking_tipos_servicios":
-        result_str = db_queries.ranking_tipos_servicios(supabase_client)
-
-    elif fn_name == "top_contratos_mas_costosos":
-        result_str = db_queries.top_contratos_mas_costosos(supabase_client)
-
-
-    else:
-        result_str = "Lo siento, no entendí tu pregunta. Intenta reformularla o pregunta sobre facturas, contratos o gastos."
-
+    # Ejecutamos la función correspondiente si está en el mapeo
+    result_str = function_mapping.get(fn_name, lambda: "Lo siento, no entendí tu pregunta. Intenta reformularla o pregunta sobre facturas, contratos o gastos.")()
 
     return result_str
