@@ -7,7 +7,7 @@ plotly
 pandas
 regex
 json
-PyPDF2
+pymupdf
 pdfplumber
 requests
 beautifulsoup4
