@@ -202,26 +202,6 @@ def ranking_proveedores_por_importe(supabase_client: Client, limit: int=5, year:
     if df_merge.empty:
         return "No encontré proveedores asociados a estas facturas."
 
-<<<<<<< HEAD
-    if df_group.empty:
-        return "No se encontraron proveedores con facturas registradas."
-
-    lines = [f"- {row['nombre_proveedor']}: {row['total']:.2f} €" for _, row in df_group.iterrows()]
-    return "Ranking de proveedores por importe:\n" + "\n".join(lines)
-
-def top_conceptos_global(supabase_client: Client) -> pd.DataFrame:
-    """
-    Retorna un ranking de conceptos con sum(total).
-    """
-    df_fact = get_facturas(supabase_client)
-    if df_fact.empty:
-        return pd.DataFrame()
-
-    df_fact["total"] = pd.to_numeric(df_fact["total"], errors="coerce").fillna(0)
-    df_group = df_fact.groupby("concepto")["total"].sum().reset_index()
-    df_group = df_group.sort_values("total", ascending=False)
-    return df_group
-=======
     # Agrupar por 'nombre_proveedor', sum de total
     df_rank = df_merge.groupby("nombre_proveedor")["total"].sum().reset_index()
     df_rank = df_rank.sort_values("total", ascending=False).head(limit)
@@ -229,4 +209,3 @@ def top_conceptos_global(supabase_client: Client) -> pd.DataFrame:
     for _, row in df_rank.iterrows():
         lines.append(f"- {row['nombre_proveedor']}: {row['total']:.2f}")
     return ("Ranking de proveedores por importe:\n" + "\n".join(lines))
->>>>>>> parent of 7a91c3e (aaa)
