@@ -174,7 +174,9 @@ def vista_chatbot():
     if "chat_history" not in st.session_state:
         st.session_state["chat_history"] = []
 
-    user_input = st.text_input("Pregunta al chatbot:", "")
+    st.write("Preguntas de ejemplo: ¿En qué residencia gastamos más en 2024? o ¿Cuántas facturas tenemos?, Cuál es la factura más reciente?” , Cuántos contratos vencen antes de 31/12/2025?"
+             )
+    user_input = st.text_input("Escribe tu pregunta:", "")
     if st.button("Enviar"):
         openai_api_key = st.secrets.get("OPENAI_API_KEY")
         if not openai_api_key:
