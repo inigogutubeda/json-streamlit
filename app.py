@@ -1,41 +1,34 @@
-import os
+########################################
+# app.py
+########################################
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-from supabase import create_client, Client
+from supabase import create_client
 
-# Lógica RAG
+# Lógica Chatbot
 from rag.pipeline import process_user_question
-# Para dashboard
-from rag.db_queries import (
-    get_contratos,
-    get_facturas,
-    top_conceptos_global
-)
 
-########################################
-# CONFIGURACIÓN STREAMLIT
-########################################
+# BD queries para el Dashboard
+from rag.db_queries import get_contratos, get_facturas, top_conceptos_global
+
 st.set_page_config(
-    page_title="POC Residencias",
+    page_title="POC Residencias (Function Calling)",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
+# Opcional: algo de CSS
 CUSTOM_CSS = """
 <style>
-/* Ajuste del contenedor principal */
 .main > div {
     padding-left: 3rem;
     padding-right: 3rem;
-    background-color: #FFFFFF; 
 }
-/* Títulos centrados */
 h1, h2, h3 {
     text-align: center;
     color: #4CAF50;
 }
-/* Chat */
 .chat-container {
     background-color: #F0F2F6;
     border-radius: 5px;
@@ -62,23 +55,16 @@ h1, h2, h3 {
 """
 st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 
-########################################
-# Conexión Supabase
-########################################
 def init_connection():
     url = st.secrets["SUPABASE_URL"]
     key = st.secrets["SUPABASE_KEY"]
-    supabase = create_client(url, key)
-    return supabase
+    return create_client(url, key)
 
 supabase_client = init_connection()
 
-########################################
-# Funciones Dashboard
-########################################
+########### SECCIONES DEL DASHBOARD ###########
 def vista_general_dashboard():
     st.subheader("Visión General")
-
     df_contr = get_contratos(supabase_client)
     df_fact = get_facturas(supabase_client)
 
@@ -92,19 +78,13 @@ def vista_general_dashboard():
         st.metric("Total facturado", f"{df_fact['total'].sum():,.2f} €")
 
     st.markdown("---")
-
     st.write("**Contratos**")
-    if df_contr.empty:
-        st.warning("No hay contratos.")
-    else:
-        st.dataframe(df_contr)
-
+    st.dataframe(df_contr) if not df_contr.empty else st.warning("No hay contratos.")
     st.write("**Facturas**")
     if df_fact.empty:
         st.warning("No hay facturas.")
     else:
         st.dataframe(df_fact)
-
 
 def vista_por_residencia():
     st.subheader("Análisis por Residencia/Centro")
@@ -119,7 +99,6 @@ def vista_por_residencia():
     df_fact = get_facturas(supabase_client)
     df_fact["total"] = pd.to_numeric(df_fact["total"], errors="coerce").fillna(0)
 
-    # CORREGIDO: Cierra correctamente el corchete
     if centro_sel != "(Todos)":
         df_contr = df_contr[df_contr["centro"] == centro_sel]
         cids = df_contr["id"].unique().tolist()
@@ -137,16 +116,14 @@ def vista_por_residencia():
     gasto_total = df_fact["total"].sum()
     st.metric(f"Gasto total en {centro_sel}", f"{gasto_total:,.2f} €")
 
-    # Grafico
     fig = px.bar(
         df_fact,
-        x="numero_factura",
+        x="numero",
         y="total",
         title=f"Facturación {centro_sel}",
-        labels={"numero_factura": "Factura", "total": "Importe (€)"}
+        labels={"numero": "Factura", "total": "Importe (€)"}
     )
     st.plotly_chart(fig, use_container_width=True)
-
 
 def vista_top_conceptos():
     st.subheader("Top Conceptos de Gasto")
@@ -166,47 +143,39 @@ def vista_top_conceptos():
     )
     st.plotly_chart(fig, use_container_width=True)
 
-########################################
-# Chatbot
-########################################
+
+########### SECCIÓN DEL CHATBOT ###########
 def vista_chatbot():
-    st.header("Chatbot (RAG)")
+    st.header("Chatbot con GPT-4 function calling (sin regex)")
 
     if "chat_history" not in st.session_state:
         st.session_state["chat_history"] = []
 
-    st.write("Preguntas de ejemplo: “¿En qué residencia gastamos más en 2024?”")
-    user_input = st.text_input("Escribe tu pregunta:", "")
+    user_input = st.text_input("Pregunta al Chatbot:", "")
     if st.button("Enviar"):
-        if user_input.strip():
-            openai_api_key = st.secrets.get("OPENAI_API_KEY")
-            if not openai_api_key:
-                st.error("Falta OPENAI_API_KEY en secrets.")
-            else:
-                respuesta = process_user_question(supabase_client, user_input, openai_api_key)
-                st.session_state["chat_history"].append(("user", user_input))
-                st.session_state["chat_history"].append(("bot", respuesta))
+        openai_api_key = st.secrets.get("OPENAI_API_KEY")
+        if not openai_api_key:
+            st.error("Falta la clave OPENAI_API_KEY en secrets.")
+        else:
+            respuesta = process_user_question(supabase_client, user_input, openai_api_key)
+            st.session_state["chat_history"].append(("user", user_input))
+            st.session_state["chat_history"].append(("bot", respuesta))
 
-    # Mostrar historial
     st.subheader("Historial")
-    with st.container():
-        st.markdown('<div class="chat-container">', unsafe_allow_html=True)
-        for role, msg in st.session_state["chat_history"]:
-            if role == "user":
-                st.markdown(f'<div class="user-message">{msg}</div>', unsafe_allow_html=True)
-            else:
-                st.markdown(f'<div class="bot-message">{msg}</div>', unsafe_allow_html=True)
-        st.markdown('</div>', unsafe_allow_html=True)
+    for role, msg in st.session_state["chat_history"]:
+        if role == "user":
+            st.markdown(f'<div class="user-message">{msg}</div>', unsafe_allow_html=True)
+        else:
+            st.markdown(f'<div class="bot-message">{msg}</div>', unsafe_allow_html=True)
 
 ########################################
 # MAIN
 ########################################
 def main():
     st.sidebar.title("POC Residencias")
-    op = st.sidebar.radio("Navegación", ["Dashboard", "Chatbot"])
+    section = st.sidebar.radio("Navegación", ["Dashboard", "Chatbot"])
 
-    if op == "Dashboard":
-        # Tabs en el dashboard
+    if section == "Dashboard":
         tabs = st.tabs(["Visión General", "Por Residencia", "Top Conceptos"])
         with tabs[0]:
             vista_general_dashboard()

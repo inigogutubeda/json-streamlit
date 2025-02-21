@@ -1,95 +1,63 @@
 # rag/pipeline.py
-import pandas as pd
-from .parser import interpret_question
-from .db_queries import (
-    ranking_gastos_por_centro,
-    factura_mas_alta_year,
-    ranking_proveedores_por_centro,
-    resumen_residencia,
-    get_facturas
-    # etc
-)
-from .gpt import create_gpt_client, build_prompt, chat_completion
 
-def process_user_question(supabase_client, user_input, openai_api_key=""):
-    intent_data = interpret_question(user_input)
-    intent = intent_data["intent"]
-    context_str = ""
+import json
+from .gpt import GPTFunctionCaller
+from . import db_queries
 
-    if intent == "ranking_gastos_centros":
-        year = intent_data.get("year", None)
-        df_rank = ranking_gastos_por_centro(supabase_client, year)
-        if df_rank.empty:
-            context_str = "No encontré facturas con esa condición."
-        else:
-            context_str = "Ranking de gasto por centro:\n"
-            for i, row in df_rank.iterrows():
-                context_str += f"- {row['centro']}: {row['total']:.2f}\n"
-            top = df_rank.iloc[0]
-            context_str += f"\nEl mayor gasto lo tiene {top['centro']} con {top['total']:.2f}."
+def process_user_question(supabase_client, user_input: str, openai_api_key: str) -> str:
+    """
+    - Crea un GPTFunctionCaller con la key
+    - Step 1: GPT "function calling"
+    - Step 2: si GPT llama a function, la ejecutamos localmente y 
+      le pasamos el resultado en un 'role=function' => GPT produce la 
+      respuesta final "conversacional"
+    """
+    gpt_caller = GPTFunctionCaller(api_key=openai_api_key)
 
-    elif intent == "max_factura_year":
-        year = intent_data.get("year", None)
-        row_max = factura_mas_alta_year(supabase_client, year)
-        if row_max is None:
-            context_str = f"No encontré facturas para {year}."
-        else:
-            context_str = (f"La factura más alta en {year} es {row_max['numero_factura']}, "
-                           f"con un total de {row_max['total']:.2f} €.")
+    step1 = gpt_caller.call_step_1(user_input)
+    choice = step1.choices[0]
+    finish_reason = choice["finish_reason"]
 
-    elif intent == "ranking_proveedores":
-        centro = intent_data.get("centro", None)
-        year = intent_data.get("year", None)
-        df_rank = ranking_proveedores_por_centro(supabase_client, centro, year)
-        if df_rank.empty:
-            context_str = "No se encontraron proveedores con esos criterios."
-        else:
-            context_str = "Ranking de proveedores:\n"
-            for i, row in df_rank.iterrows():
-                context_str += f"- {row['nombre_proveedor']}: {row['total']:.2f}\n"
-            top = df_rank.iloc[0]
-            context_str += f"\nEl proveedor con mayor gasto es {top['nombre_proveedor']} con {top['total']:.2f}."
+    if finish_reason == "function_call":
+        # GPT invoca una de nuestras functions
+        fn_call = choice["message"]["function_call"]
+        fn_name = fn_call["name"]
+        fn_args_json = fn_call["arguments"]
 
-    elif intent == "resumen_residencia":
-        centro = intent_data.get("centro")
-        if not centro:
-            context_str = "No indicaste la residencia."
+        # Parseamos los argumentos
+        try:
+            fn_args = json.loads(fn_args_json)
+        except:
+            fn_args = {}
+
+        # Llamar la función local
+        result_str = ""
+        if fn_name == "facturas_importe_mayor":
+            importe = fn_args.get("importe",0)
+            result_str = db_queries.facturas_importe_mayor(supabase_client, importe)
+
+        elif fn_name == "proveedor_mas_contratos":
+            result_str = db_queries.proveedor_mas_contratos(supabase_client)
+
+        elif fn_name == "factura_mas_reciente":
+            result_str = db_queries.factura_mas_reciente(supabase_client)
+
+        elif fn_name == "gasto_en_rango_fechas":
+            fi = fn_args.get("fecha_inicio","")
+            ff = fn_args.get("fecha_fin","")
+            result_str = db_queries.gasto_en_rango_fechas(supabase_client, fi, ff)
+
+        elif fn_name == "contratos_vencen_antes_de":
+            fecha_lim = fn_args.get("fecha_limite","")
+            result_str = db_queries.contratos_vencen_antes_de(supabase_client, fecha_lim)
+
         else:
-            data = resumen_residencia(supabase_client, centro)
-            if data is None or data["contratos"].empty:
-                context_str = f"No encontré datos para {centro}."
-            else:
-                total_gasto = data["total_gasto"]
-                num_contr = len(data["contratos"])
-                num_fact = len(data["facturas"])
-                context_str = (
-                    f"Resumen de {centro}:\n"
-                    f"- Contratos: {num_contr}\n"
-                    f"- Facturas: {num_fact}\n"
-                    f"- Gasto total: {total_gasto:.2f} €"
-                )
-    elif intent == "get_total_year":
-        year = intent_data.get("year")
-        df_fact = get_facturas(supabase_client)
-        if df_fact.empty:
-            context_str = "No hay facturas."
-        else:
-            df_fact["fecha_factura"] = pd.to_datetime(df_fact["fecha_factura"], errors="coerce")
-            df_fact["year"] = df_fact["fecha_factura"].dt.year
-            df_fact["total"] = pd.to_numeric(df_fact["total"], errors="coerce").fillna(0)
-            df_fact = df_fact[df_fact["year"] == year]
-            if df_fact.empty:
-                context_str = f"No hallé facturas en {year}."
-            else:
-                suma = df_fact["total"].sum()
-                context_str = f"En {year} hay {len(df_fact)} facturas por un total de {suma:.2f}€."
+            # Function no reconocida
+            result_str = f"Function '{fn_name}' no está implementada localmente."
+
+        # Step 2: GPT produce la respuesta final
+        final_msg = gpt_caller.call_step_2(fn_name, result_str)
+        return final_msg
     else:
-        context_str = "No reconozco la intención con los datos disponibles."
-
-    prompt = build_prompt(context_str, user_input)
-    if not openai_api_key:
-        return f"(ERROR) Falta la OpenAI API Key. CONTEXTO: {context_str}"
-
-    client = create_gpt_client(openai_api_key)
-    respuesta = chat_completion(client, prompt, model="gpt-3.5-turbo")
-    return respuesta
+        # GPT no llamó a function => devuelvo el texto
+        return choice["message"]["content"].strip()

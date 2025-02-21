@@ -1,6 +1,8 @@
 # rag/db_queries.py
+
 import pandas as pd
 from supabase import Client
+from datetime import datetime
 
 def get_contratos(supabase_client: Client) -> pd.DataFrame:
     resp = supabase_client.table("contratos").select("*").execute()
@@ -10,118 +12,153 @@ def get_facturas(supabase_client: Client) -> pd.DataFrame:
     resp = supabase_client.table("facturas").select("*").execute()
     return pd.DataFrame(resp.data or [])
 
-def ranking_gastos_por_centro(supabase_client: Client, year=None) -> pd.DataFrame:
+def facturas_importe_mayor(supabase_client: Client, importe: float) -> str:
     """
-    Devuelve un DF con [centro, total] ordenado desc por total.
-    Si year está definido, filtra facturas por ese año.
-    """
-    df_contr = get_contratos(supabase_client)
-    df_fact = get_facturas(supabase_client)
-    if df_fact.empty or df_contr.empty:
-        return pd.DataFrame()
-
-    df_fact["fecha_factura"] = pd.to_datetime(df_fact["fecha_factura"], errors="coerce")
-    df_fact["year"] = df_fact["fecha_factura"].dt.year
-
-    if year:
-        df_fact = df_fact[df_fact["year"] == year]
-
-    # Merge facturas + contratos para obtener la columna "centro"
-    df_merge = df_fact.merge(df_contr, left_on="contrato_id", right_on="id", suffixes=("_fact", "_contr"))
-    # df_merge ahora tiene "centro", "total", etc.
-    df_merge["total"] = pd.to_numeric(df_merge["total"], errors="coerce").fillna(0)
-
-    df_group = df_merge.groupby("centro")["total"].sum().reset_index()
-    df_group = df_group.sort_values("total", ascending=False)
-    return df_group
-
-def factura_mas_alta_year(supabase_client: Client, year: int):
-    """
-    Devuelve la fila (dict / Series) de la factura con mayor 'total' en ese año,
-    o None si no hay facturas.
+    Retorna un resumen sobre las facturas cuyo total sea > importe.
     """
     df_fact = get_facturas(supabase_client)
     if df_fact.empty:
-        return None
-
-    df_fact["fecha_factura"] = pd.to_datetime(df_fact["fecha_factura"], errors="coerce")
-    df_fact["year"] = df_fact["fecha_factura"].dt.year
-    df_fact = df_fact[df_fact["year"] == year]
+        return "No hay facturas registradas en la base de datos."
 
     df_fact["total"] = pd.to_numeric(df_fact["total"], errors="coerce").fillna(0)
-    if df_fact.empty:
-        return None
+    df_fil = df_fact[df_fact["total"] > importe]
+    if df_fil.empty:
+        return f"No hay facturas con importe mayor a {importe:.2f}."
+    suma = df_fil["total"].sum()
+    return (f"Encontré {len(df_fil)} facturas con importe mayor a {importe:.2f}. "
+            f"La suma de esas facturas es {suma:.2f}.")
 
-    row_max = df_fact.loc[df_fact["total"].idxmax()]
-    return row_max
-
-def ranking_proveedores_por_centro(supabase_client: Client, centro_str=None, year=None) -> pd.DataFrame:
+def proveedor_mas_contratos(supabase_client: Client) -> str:
     """
-    Ejemplo: ranking de gastos por proveedor en un centro (Residencia N, Fundación X) y (opcional) en un año.
+    Devuelve un ranking de proveedores por número de contratos y destaca el que más tiene.
     """
     df_contr = get_contratos(supabase_client)
-    df_fact = get_facturas(supabase_client)
-    if df_contr.empty or df_fact.empty:
-        return pd.DataFrame()
+    if df_contr.empty:
+        return "No hay contratos registrados."
 
-    # Filtramos por centro si hay
-    if centro_str:
-        df_contr = df_contr[df_contr["centro"].str.lower() == centro_str.lower()]
-
-    df_fact["fecha_factura"] = pd.to_datetime(df_fact["fecha_factura"], errors="coerce")
-    df_fact["year"] = df_fact["fecha_factura"].dt.year
-
-    if year:
-        df_fact = df_fact[df_fact["year"] == year]
-
-    # Merge
-    df_merge = df_fact.merge(df_contr, left_on="contrato_id", right_on="id", suffixes=("_fact", "_contr"))
-    df_merge["total"] = pd.to_numeric(df_merge["total"], errors="coerce").fillna(0)
-
-    # Agrupamos por proveedor_id (que está en df_contr.proveedor_id)
-    df_rank = df_merge.groupby("proveedor_id")["total"].sum().reset_index()
-    df_rank = df_rank.sort_values("total", ascending=False)
-
-    # Si quieres el nombre del proveedor, puedes load 'proveedores' y merge:
+    df_group = df_contr.groupby("proveedor_id").size().reset_index(name="num_contratos")
     resp_prov = supabase_client.table("proveedores").select("*").execute()
     df_prov = pd.DataFrame(resp_prov.data or [])
 
-    df_rank = df_rank.merge(df_prov, left_on="proveedor_id", right_on="id", suffixes=(None, "_prov"))
-    # df_rank tiene columns: proveedor_id, total, id, cif_proveedor, nombre_proveedor...
-    df_rank = df_rank[["proveedor_id", "nombre_proveedor", "total"]].sort_values("total", ascending=False)
+    df_merge = df_group.merge(df_prov, left_on="proveedor_id", right_on="id")
+    df_merge = df_merge.sort_values("num_contratos", ascending=False)
 
-    return df_rank
+    if df_merge.empty:
+        return "No encontré proveedores."
 
-def resumen_residencia(supabase_client: Client, centro_str: str):
+    lines = []
+    for _, row in df_merge.iterrows():
+        lines.append(f"- {row['nombre_proveedor']}: {row['num_contratos']} contratos")
+    top = df_merge.iloc[0]
+    return ("Ranking de proveedores por número de contratos:\n"
+            + "\n".join(lines)
+            + f"\n\nEl que más tiene es {top['nombre_proveedor']} con {top['num_contratos']}.")
+
+def factura_mas_reciente(supabase_client: Client) -> str:
     """
-    Devuelve un DF con facturas y otra info para un centro en particular.
-    O lo que quieras (contratos, total...). 
-    """
-    df_contr = get_contratos(supabase_client)
-    df_fact = get_facturas(supabase_client)
-
-    df_contr_centro = df_contr[df_contr["centro"].str.lower() == centro_str.lower()]
-    if df_contr_centro.empty:
-        return None
-
-    cids = df_contr_centro["id"].unique().tolist()
-    df_fact_centro = df_fact[df_fact["contrato_id"].isin(cids)]
-    df_fact_centro["total"] = pd.to_numeric(df_fact_centro["total"], errors="coerce").fillna(0)
-    return {
-        "contratos": df_contr_centro,
-        "facturas": df_fact_centro,
-        "total_gasto": df_fact_centro["total"].sum()
-    }
-
-def top_conceptos_global(supabase_client: Client) -> pd.DataFrame:
-    """
-    Retorna un ranking de conceptos con sum(total).
+    Factura con la fecha_factura más nueva.
     """
     df_fact = get_facturas(supabase_client)
     if df_fact.empty:
-        return pd.DataFrame()
+        return "No hay facturas registradas."
 
+    df_fact["fecha_factura"] = pd.to_datetime(df_fact["fecha_factura"], errors="coerce")
+    df_fact = df_fact.dropna(subset=["fecha_factura"])
+    if df_fact.empty:
+        return "No hay facturas con fecha válida."
+
+    row = df_fact.loc[df_fact["fecha_factura"].idxmax()]
+    return (f"La factura más reciente es '{row['numero']}' (fecha: {row['fecha_factura']}) "
+            f"con total {row['total']}. Concepto: {row.get('concepto','(sin concepto)')}")
+
+def gasto_en_rango_fechas(supabase_client: Client, fecha_inicio: str, fecha_fin: str) -> str:
+    """
+    Devuelve la suma de facturas en el rango [fecha_inicio, fecha_fin], 
+    asumiendo formato dd/mm/yyyy.
+    """
+    fmt = "%d/%m/%Y"
+    try:
+        fi = datetime.strptime(fecha_inicio, fmt)
+        ff = datetime.strptime(fecha_fin, fmt)
+    except ValueError:
+        return "No pude parsear las fechas, usa dd/mm/yyyy."
+
+    df_fact = get_facturas(supabase_client)
+    if df_fact.empty:
+        return "No hay facturas registradas."
+
+    df_fact["fecha_factura"] = pd.to_datetime(df_fact["fecha_factura"], errors="coerce")
     df_fact["total"] = pd.to_numeric(df_fact["total"], errors="coerce").fillna(0)
-    df_group = df_fact.groupby("concepto")["total"].sum().reset_index()
+    df_fact = df_fact.dropna(subset=["fecha_factura"])
+
+    df_fil = df_fact[(df_fact["fecha_factura"] >= fi) & (df_fact["fecha_factura"] <= ff)]
+    suma = df_fil["total"].sum()
+    return (f"El gasto total entre {fecha_inicio} y {fecha_fin} es {suma:.2f}.")
+
+def contratos_vencen_antes_de(supabase_client: Client, fecha_limite: str) -> str:
+    """
+    Retorna cuántos contratos vencen antes de fecha_limite (dd/mm/yyyy) y 
+    lista breve de ellos.
+    """
+    fmt = "%d/%m/%Y"
+    try:
+        fl = datetime.strptime(fecha_limite, fmt)
+    except ValueError:
+        return "No pude parsear la fecha (dd/mm/yyyy)."
+
+    df_contr = get_contratos(supabase_client)
+    if df_contr.empty:
+        return "No hay contratos."
+
+    df_contr["fecha_vencimiento"] = pd.to_datetime(df_contr["fecha_vencimiento"], errors="coerce")
+    df_contr = df_contr.dropna(subset=["fecha_vencimiento"])
+    df_fil = df_contr[df_contr["fecha_vencimiento"] < fl]
+
+    if df_fil.empty:
+        return f"Ningún contrato vence antes de {fecha_limite}."
+    lines = []
+    for _, row in df_fil.iterrows():
+        lines.append(f"- Contrato ID {row['id']}, centro={row['centro']}, vence={row['fecha_vencimiento']}")
+    return (f"Hay {len(df_fil)} contratos que vencen antes de {fecha_limite}:\n" + "\n".join(lines))
+
+###############################
+# Extra: top_conceptos_global
+###############################
+def top_conceptos_global(supabase_client: Client) -> pd.DataFrame:
+    """
+    Ejemplo de ranking por 'concepto' en facturas, 
+    usado en el dashboard.
+    """
+    df_f = get_facturas(supabase_client)
+    if df_f.empty:
+        return pd.DataFrame()
+    df_f["total"] = pd.to_numeric(df_f["total"], errors="coerce").fillna(0)
+    df_group = df_f.groupby("concepto")["total"].sum().reset_index()
     df_group = df_group.sort_values("total", ascending=False)
     return df_group
+
+    """
+    Devuelve cuántos contratos vencen antes de fecha_limite (dd/mm/yyyy) y una breve lista.
+    """
+    try:
+        fmt = "%d/%m/%Y"
+        f_lim = datetime.strptime(fecha_limite, fmt)
+    except ValueError:
+        return "No pude parsear la fecha (usa dd/mm/yyyy)."
+
+    df = get_contratos(supabase_client)
+    if df.empty:
+        return "No hay contratos."
+
+    df["fecha_vencimiento"] = pd.to_datetime(df["fecha_vencimiento"], errors="coerce")
+    df = df.dropna(subset=["fecha_vencimiento"])
+    df_fil = df[df["fecha_vencimiento"] < f_lim]
+
+    if df_fil.empty:
+        return f"No hay contratos que venzan antes de {fecha_limite}."
+    
+    lines = []
+    for _, row in df_fil.iterrows():
+        lines.append(f"- Contrato ID {row['id']} (Centro: {row['centro']}), vence: {row['fecha_vencimiento']}")
+    return (f"Hay {len(df_fil)} contratos que vencen antes de {fecha_limite}:\n"
+            + "\n".join(lines))
