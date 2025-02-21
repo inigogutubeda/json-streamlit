@@ -1,4 +1,3 @@
-# app.py
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -79,22 +78,7 @@ def vista_chatbot():
     if "chat_history" not in st.session_state:
         st.session_state["chat_history"] = []
 
-    # Opciones de preguntas rápidas
-    st.subheader("❓ Preguntas Rápidas")
-    pregunta_seleccionada = st.selectbox(
-        "Selecciona una pregunta:",
-        [
-            "¿Cuánto debo en facturas pendientes?",
-            "¿Cuáles son los contratos más costosos?",
-            "Ranking de servicios más costosos",
-            "Facturas de ProveedorX en 2023"
-        ]
-    )
-
-    if st.button("🚀 Preguntar"):
-        user_input = pregunta_seleccionada
-    else:
-        user_input = st.text_input("✍️ Escribe tu pregunta:")
+    user_input = st.text_input("✍️ Escribe tu pregunta:")
 
     if st.button("Enviar"):
         openai_api_key = st.secrets.get("OPENAI_API_KEY")
@@ -105,13 +89,27 @@ def vista_chatbot():
             st.session_state["chat_history"].append(("Usuario", user_input))
             st.session_state["chat_history"].append(("Chatbot 🤖", resp))
 
-    # Historial de Conversación con Estilos
+    # Historial de Conversación con Mejor Formato
     st.subheader("📝 Historial de Conversación")
     for r, m in st.session_state["chat_history"]:
         if r == "Usuario":
-            st.markdown(f"<div style='background-color: #d1ecf1; padding: 10px; border-radius: 10px;'><b>🧑‍💼 {r}</b>: {m}</div>", unsafe_allow_html=True)
+            st.markdown(f"""
+                <div style='background-color: #d1ecf1; padding: 10px; border-radius: 10px; margin: 5px 0;'>
+                    <b>🧑‍💼 {r}</b>: {m}
+                </div>
+                """, unsafe_allow_html=True)
         else:
-            st.markdown(f"<div style='background-color: #f8d7da; padding: 10px; border-radius: 10px;'><b>{r}</b>: {m}</div>", unsafe_allow_html=True)
+            # Aplicamos formato si la respuesta tiene listas de datos
+            if isinstance(m, list):
+                formatted_text = "<br>".join([f"• {item}" for item in m])
+            else:
+                formatted_text = m.replace("-", "•").replace("\n", "<br>")
+
+            st.markdown(f"""
+                <div style='background-color: #f8f9fa; border-left: 5px solid #dc3545; padding: 10px; border-radius: 10px; margin: 5px 0;'>
+                    <b>{r}</b>: {formatted_text}
+                </div>
+                """, unsafe_allow_html=True)
 
 # 🎛 Navegación Principal
 def main():
