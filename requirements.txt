@@ -7,3 +7,5 @@ plotly
 pandas
 regex
 pymupdf
+sklearn
+numpy
