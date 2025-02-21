@@ -90,7 +90,7 @@ def vista_chatbot():
             st.session_state["chat_history"].insert(0, ("Usuario", user_input))
             st.session_state["chat_history"].insert(0, ("Chatbot 🤖", resp))
 
-    # Contenedor del historial de conversación con scroll automático
+    # Historial de Conversación con Mejor Formato
     st.subheader("📝 Historial de Conversación")
     with st.container():
         for r, m in st.session_state["chat_history"]:
@@ -101,12 +101,28 @@ def vista_chatbot():
                     </div>
                     """, unsafe_allow_html=True)
             else:
-                formatted_text = m.replace("-", "•").replace("\n", "<br>")
+                formatted_text = formatear_respuesta(m)
                 st.markdown(f"""
                     <div style='background-color: #f8f9fa; border-left: 5px solid #dc3545; padding: 10px; border-radius: 10px; margin: 5px 0;'>
                         <b>{r}</b>: {formatted_text}
                     </div>
                     """, unsafe_allow_html=True)
+
+# 📌 Función para Mejorar el Formato de las Respuestas
+def formatear_respuesta(respuesta):
+    """
+    Convierte la respuesta en un formato más estructurado usando Markdown.
+    """
+    if isinstance(respuesta, list):  
+        # Si es una lista, formatearla con viñetas
+        return "<br>".join([f"• <b>{item}</b>" for item in respuesta])
+
+    if isinstance(respuesta, pd.DataFrame):  
+        # Si es un DataFrame, mostrarlo como tabla HTML
+        return respuesta.to_html(index=False, escape=False)
+
+    # Convertir respuestas en texto plano con formato más visual
+    return respuesta.replace("-", "•").replace("\n", "<br>")
 # 🎛 Navegación Principal
 def main():
     st.sidebar.title("📌 POC Residencias")
