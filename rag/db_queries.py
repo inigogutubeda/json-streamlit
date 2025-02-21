@@ -144,16 +144,3 @@ def ranking_proveedores_por_importe(supabase_client: Client, limit: int = 5, yea
 
     lines = [f"- {row['nombre_proveedor']}: {row['total']:.2f} €" for _, row in df_group.iterrows()]
     return "Ranking de proveedores por importe:\n" + "\n".join(lines)
-
-def top_conceptos_global(supabase_client: Client) -> pd.DataFrame:
-    """
-    Retorna un ranking de conceptos con sum(total).
-    """
-    df_fact = get_facturas(supabase_client)
-    if df_fact.empty:
-        return pd.DataFrame()
-
-    df_fact["total"] = pd.to_numeric(df_fact["total"], errors="coerce").fillna(0)
-    df_group = df_fact.groupby("concepto")["total"].sum().reset_index()
-    df_group = df_group.sort_values("total", ascending=False)
-    return df_group
