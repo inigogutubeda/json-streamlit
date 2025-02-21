@@ -299,9 +299,6 @@ def get_facturas_por_proveedor(supabase_client: Client, proveedor: str, year: in
     return f"El total facturado por {proveedor} en {year} es de {total:.2f} €."
 
 def get_contratos_vencen_proximos_meses(supabase_client: Client) -> str:
-    """
-    Devuelve los contratos que vencen en los próximos 6 meses.
-    """
     df_contr = get_contratos(supabase_client)
     df_contr["fecha_vencimiento"] = pd.to_datetime(df_contr["fecha_vencimiento"], errors="coerce")
     df_contr.dropna(subset=["fecha_vencimiento"], inplace=True)
@@ -310,7 +307,11 @@ def get_contratos_vencen_proximos_meses(supabase_client: Client) -> str:
     
     if df_contr.empty:
         return "No hay contratos próximos a vencer."
-    return f"Hay {len(df_contr)} contratos que vencen en los próximos 6 meses."
+    
+    contratos_lista = "\n".join([f"- ID {row['id']}, Centro: {row['centro']}, Vence: {row['fecha_vencimiento'].strftime('%d/%m/%Y')}" 
+                                  for _, row in df_contr.iterrows()])
+    
+    return f"Hay {len(df_contr)} contratos que vencen en los próximos 6 meses:\n{contratos_lista}"
 
 def get_top_centros_mayores_gastos(supabase_client: Client, year: int) -> pd.DataFrame:
     """
@@ -325,3 +326,89 @@ def get_top_centros_mayores_gastos(supabase_client: Client, year: int) -> pd.Dat
     df_merge = df_merge[df_merge["year"] == year]
     df_top = df_merge.groupby("centro")["total"].sum().reset_index().sort_values("total", ascending=False).head(5)
     return df_top
+
+def contrato_mas_costoso(supabase_client: Client) -> str:
+    """
+    Retorna el contrato con el importe más alto.
+    """
+    df_contr = get_contratos(supabase_client)
+    if df_contr.empty:
+        return "No hay contratos registrados."
+
+    df_contr["importe"] = pd.to_numeric(df_contr["importe"], errors="coerce").fillna(0)
+    contrato_top = df_contr.loc[df_contr["importe"].idxmax()]
+
+    return (f"El contrato más costoso es con {contrato_top['centro']} por un importe de "
+            f"{contrato_top['importe']:.2f} € y vence el {contrato_top['fecha_vencimiento']}.")
+
+def facturas_de_proveedor(supabase_client: Client, proveedor: str, year: int) -> str:
+    """
+    Devuelve todas las facturas de un proveedor en un año específico.
+    """
+    df_fact = get_facturas(supabase_client)
+    df_fact["fecha_factura"] = pd.to_datetime(df_fact["fecha_factura"], errors="coerce")
+    df_fact["year"] = df_fact["fecha_factura"].dt.year
+
+    df_filtradas = df_fact[(df_fact["year"] == year) & (df_fact["proveedor"] == proveedor)]
+    
+    if df_filtradas.empty:
+        return f"No hay facturas para {proveedor} en {year}."
+
+    facturas_list = "\n".join(
+        [f"- Factura {row['numero_factura']}: {row['total']} €" for _, row in df_filtradas.iterrows()]
+    )
+    
+    return f"Facturas de {proveedor} en {year}:\n{facturas_list}"
+
+def gasto_por_tipo_servicio(supabase_client: Client, tipo_servicio: str) -> str:
+    """
+    Calcula el total gastado en un tipo de servicio específico (ejemplo: 'electricidad', 'limpieza').
+    """
+    df_fact = get_facturas(supabase_client)
+    df_contr = get_contratos(supabase_client)
+    
+    df_merge = df_fact.merge(df_contr, left_on="contrato_id", right_on="id")
+    df_filtrados = df_merge[df_merge["tipo_servicio"].str.lower() == tipo_servicio.lower()]
+    
+    if df_filtrados.empty:
+        return f"No hay gastos registrados en {tipo_servicio}."
+
+    total_gasto = df_filtrados["total"].sum()
+    return f"El total gastado en {tipo_servicio} es de {total_gasto:.2f} €."
+
+def ranking_tipos_servicios(supabase_client: Client) -> str:
+    """
+    Muestra los tipos de servicio con mayor gasto total.
+    """
+    df_fact = get_facturas(supabase_client)
+    df_contr = get_contratos(supabase_client)
+
+    df_merge = df_fact.merge(df_contr, left_on="contrato_id", right_on="id")
+    df_ranking = df_merge.groupby("tipo_servicio")["total"].sum().reset_index()
+    df_ranking = df_ranking.sort_values("total", ascending=False)
+
+    if df_ranking.empty:
+        return "No hay datos suficientes para generar el ranking de servicios."
+
+    ranking_list = "\n".join(
+        [f"- {row['tipo_servicio']}: {row['total']:.2f} €" for _, row in df_ranking.iterrows()]
+    )
+    
+    return f"Ranking de tipos de servicios más costosos:\n{ranking_list}"
+
+def top_contratos_mas_costosos(supabase_client: Client) -> str:
+    """
+    Retorna los 3 contratos activos con mayor importe.
+    """
+    df_contr = get_contratos(supabase_client)
+    if df_contr.empty:
+        return "No hay contratos registrados."
+
+    df_contr["importe"] = pd.to_numeric(df_contr["importe"], errors="coerce").fillna(0)
+    df_top = df_contr.sort_values("importe", ascending=False).head(3)
+
+    contratos_list = "\n".join(
+        [f"- {row['centro']}: {row['importe']} € (Vence: {row['fecha_vencimiento']})" for _, row in df_top.iterrows()]
+    )
+    
+    return f"Top 3 contratos más costosos:\n{contratos_list}"

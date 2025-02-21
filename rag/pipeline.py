@@ -75,8 +75,29 @@ def process_user_question(supabase_client, user_input: str, openai_api_key: str)
     elif fn_name == "ranking_gastos_centros":
         year = parsed_intent.get("year", 0)
         result_str = db_queries.get_top_centros_mayores_gastos(supabase_client, year).to_string()
+    elif fn_name == "get_total_year":
+        year = parsed_intent.get("year", 0)
+        result_str = db_queries.gasto_en_rango_fechas(supabase_client, f"01/01/{year}", f"31/12/{year}")
+    elif fn_name == "contrato_mas_costoso":
+        result_str = db_queries.contrato_mas_costoso(supabase_client)
+    elif fn_name == "facturas_de_proveedor":
+        proveedor = parsed_intent.get("proveedor", "")
+        year = parsed_intent.get("year", 0)
+        result_str = db_queries.facturas_de_proveedor(supabase_client, proveedor, year)
+
+    elif fn_name == "gasto_por_tipo_servicio":
+        tipo_servicio = parsed_intent.get("tipo_servicio", "")
+        result_str = db_queries.gasto_por_tipo_servicio(supabase_client, tipo_servicio)
+
+    elif fn_name == "ranking_tipos_servicios":
+        result_str = db_queries.ranking_tipos_servicios(supabase_client)
+
+    elif fn_name == "top_contratos_mas_costosos":
+        result_str = db_queries.top_contratos_mas_costosos(supabase_client)
+
 
     else:
-        result_str = f"No hay implementación local para la función '{fn_name}'."
+        result_str = "Lo siento, no entendí tu pregunta. Intenta reformularla o pregunta sobre facturas, contratos o gastos."
+
 
     return result_str

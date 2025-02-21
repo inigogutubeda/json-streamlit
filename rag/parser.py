@@ -57,7 +57,27 @@ def interpret_question(user_input: str, api_key: str) -> dict:
         return {"intent": "proveedores_con_contratos_vigentes"}
     if "centros con más gastos" in text or "mayores gastos en centros" in text:
         return {"intent": "top_centros_mayores_gastos", "year": year}
-    
+    if "contrato más costoso" in text or "contrato más caro" in text:
+        return {"intent": "contrato_mas_costoso"}
+
+    if "facturas de" in text and "en" in text and year:
+        match_prov = re.search(r"facturas de\s+([\w\s]+)\s+en\s+\d{4}", text)
+        if match_prov:
+            proveedor_str = match_prov.group(1).strip()
+            return {"intent": "facturas_de_proveedor", "proveedor": proveedor_str, "year": year}
+
+    if "gasto en" in text or "cuánto gastamos en" in text:
+        match_tipo = re.search(r"gasto en\s+([\w\s]+)", text)
+        if match_tipo:
+            tipo_servicio = match_tipo.group(1).strip()
+            return {"intent": "gasto_por_tipo_servicio", "tipo_servicio": tipo_servicio}
+
+    if "ranking de servicios" in text or "servicios más costosos" in text:
+        return {"intent": "ranking_tipos_servicios"}
+
+    if "contratos más costosos" in text or "top contratos caros" in text:
+        return {"intent": "top_contratos_mas_costosos"}
+
     # Si no encontramos coincidencias, usamos GPT para interpretar
     gpt_caller = GPTFunctionCaller(api_key)
     response = gpt_caller.call_step_1(user_input)
