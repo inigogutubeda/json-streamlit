@@ -72,6 +72,10 @@ def process_user_question(supabase_client, user_input: str, openai_api_key: str)
     elif fn_name == "top_centros_mayores_gastos":
         year = parsed_intent.get("year", 0)
         result_str = db_queries.get_top_centros_mayores_gastos(supabase_client, year).to_string()
+    elif fn_name == "ranking_gastos_centros":
+        year = parsed_intent.get("year", 0)
+        result_str = db_queries.get_top_centros_mayores_gastos(supabase_client, year).to_string()
+
     else:
         result_str = f"No hay implementación local para la función '{fn_name}'."
 
