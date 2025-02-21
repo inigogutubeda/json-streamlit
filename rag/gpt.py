@@ -1,16 +1,14 @@
 # rag/gpt.py
 
+import json
 from openai import OpenAI
 
 class GPTFunctionCaller:
     """
-    Maneja la creación del 'client' de openai>=1.0, define las 'functions'
-    y realiza el '2-step approach' para function calling.
+    Maneja function calling con openai>=1.0 (clase OpenAI).
     """
-
     def __init__(self, api_key: str):
         self.client = OpenAI(api_key=api_key)
-        # Definimos las funciones que GPT puede invocar
         self.functions_spec = [
             {
                 "name": "facturas_importe_mayor",
@@ -45,8 +43,8 @@ class GPTFunctionCaller:
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "fecha_inicio": {"type":"string"},
-                        "fecha_fin": {"type":"string"}
+                        "fecha_inicio": {"type": "string"},
+                        "fecha_fin": {"type": "string"}
                     },
                     "required": ["fecha_inicio","fecha_fin"]
                 }
@@ -57,7 +55,7 @@ class GPTFunctionCaller:
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "fecha_limite": {"type":"string"}
+                        "fecha_limite": {"type": "string"}
                     },
                     "required":["fecha_limite"]
                 }
@@ -66,11 +64,10 @@ class GPTFunctionCaller:
 
     def call_step_1(self, user_message: str):
         """
-        Primera llamada a GPT (con function calling).
-        GPT puede devolver un function_call si cree que corresponde.
+        Llamada inicial a GPT, que puede decidir llamar a una function.
         """
         response = self.client.chat.completions.create(
-            model="gpt-4",  # o gpt-4o si tu cuenta lo soporta
+            model="gpt-4",
             messages=[{"role":"user","content":user_message}],
             functions=self.functions_spec,
             temperature=0
@@ -79,16 +76,15 @@ class GPTFunctionCaller:
 
     def call_step_2(self, function_name: str, function_result: str) -> str:
         """
-        Segunda llamada a GPT: 
-        - le pasamos un mensaje role="assistant", name=function_name, content=function_result
-        - GPT genera la respuesta final
+        Segunda llamada: pasamos el output de la función local
+        para que GPT devuelva la respuesta final conversacional.
         """
         response = self.client.chat.completions.create(
             model="gpt-4",
             messages=[
                 {
                     "role":"system",
-                    "content":"Esto es el resultado de la función python. Devuelve una respuesta final para el usuario."
+                    "content":"Output de la función Python. Devuelve una respuesta final al usuario."
                 },
                 {
                     "role":"assistant",

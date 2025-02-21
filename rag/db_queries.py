@@ -1,4 +1,5 @@
 # rag/db_queries.py
+
 import pandas as pd
 from supabase import Client
 from datetime import datetime
@@ -32,7 +33,6 @@ def proveedor_mas_contratos(supabase_client: Client) -> str:
     df_group = df_contr.groupby("proveedor_id").size().reset_index(name="num_contratos")
     resp_prov = supabase_client.table("proveedores").select("*").execute()
     df_prov = pd.DataFrame(resp_prov.data or [])
-
     df_merge = df_group.merge(df_prov, left_on="proveedor_id", right_on="id")
     df_merge = df_merge.sort_values("num_contratos", ascending=False)
     if df_merge.empty:
@@ -76,7 +76,6 @@ def gasto_en_rango_fechas(supabase_client: Client, fecha_inicio: str, fecha_fin:
     df_fact["fecha_factura"] = pd.to_datetime(df_fact["fecha_factura"], errors="coerce")
     df_fact["total"] = pd.to_numeric(df_fact["total"], errors="coerce").fillna(0)
     df_fact = df_fact.dropna(subset=["fecha_factura"])
-
     df_fil = df_fact[(df_fact["fecha_factura"] >= fi) & (df_fact["fecha_factura"] <= ff)]
     suma = df_fil["total"].sum()
     return f"El gasto total entre {fecha_inicio} y {fecha_fin} es {suma:.2f}."
@@ -94,7 +93,6 @@ def contratos_vencen_antes_de(supabase_client: Client, fecha_limite: str) -> str
 
     df_contr["fecha_vencimiento"] = pd.to_datetime(df_contr["fecha_vencimiento"], errors="coerce")
     df_contr = df_contr.dropna(subset=["fecha_vencimiento"])
-
     df_fil = df_contr[df_contr["fecha_vencimiento"] < fl]
     if df_fil.empty:
         return f"Ningún contrato vence antes de {fecha_limite}."
@@ -105,7 +103,7 @@ def contratos_vencen_antes_de(supabase_client: Client, fecha_limite: str) -> str
 
 def top_conceptos_global(supabase_client: Client) -> pd.DataFrame:
     """
-    Para el dashboard (ranking de conceptos).
+    Ranking de conceptos en facturas, para mostrar en el Dashboard (ej: vista_top_conceptos).
     """
     df_f = get_facturas(supabase_client)
     if df_f.empty:

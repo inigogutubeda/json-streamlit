@@ -1,28 +1,28 @@
 # rag/pipeline.py
+
 import json
 from .gpt import GPTFunctionCaller
 from . import db_queries
 
 def process_user_question(supabase_client, user_input: str, openai_api_key: str) -> str:
     gpt_caller = GPTFunctionCaller(api_key=openai_api_key)
-    step1_resp = gpt_caller.call_step_1(user_input)
-    choice = step1_resp.choices[0]
+    response1 = gpt_caller.call_step_1(user_input)
+    choice = response1.choices[0]
 
-    # En la nueva API, check if there's a function_call
-    fn_call = choice.message.get("function_call", None)
+    # En la nueva API pydantic model: message.function_call
+    fn_call = choice.message.function_call  # Podría ser None
     if fn_call:
-        # GPT quiere llamar a una function
-        fn_name = fn_call["name"]
-        fn_args_str = fn_call.get("arguments","{}")
+        fn_name = fn_call.name
+        fn_args_json = fn_call.arguments or "{}"
         try:
-            fn_args = json.loads(fn_args_str)
+            fn_args = json.loads(fn_args_json)
         except:
             fn_args = {}
 
-        # Llamamos a la función local
+        # Ejecutamos la función local
         if fn_name == "facturas_importe_mayor":
-            importe = fn_args.get("importe",0)
-            result_str = db_queries.facturas_importe_mayor(supabase_client, importe)
+            imp = fn_args.get("importe", 0)
+            result_str = db_queries.facturas_importe_mayor(supabase_client, imp)
 
         elif fn_name == "proveedor_mas_contratos":
             result_str = db_queries.proveedor_mas_contratos(supabase_client)
@@ -36,15 +36,15 @@ def process_user_question(supabase_client, user_input: str, openai_api_key: str)
             result_str = db_queries.gasto_en_rango_fechas(supabase_client, fi, ff)
 
         elif fn_name == "contratos_vencen_antes_de":
-            fecha_lim = fn_args.get("fecha_limite","")
-            result_str = db_queries.contratos_vencen_antes_de(supabase_client, fecha_lim)
+            fl = fn_args.get("fecha_limite","")
+            result_str = db_queries.contratos_vencen_antes_de(supabase_client, fl)
 
         else:
-            result_str = f"Function '{fn_name}' no está implementada localmente."
+            result_str = f"No hay una función implementada localmente para '{fn_name}'."
 
-        # Llamamos step 2 => GPT produce la respuesta final
-        final_answer = gpt_caller.call_step_2(fn_name, result_str)
-        return final_answer
+        # 2ª llamada: GPT produce respuesta final
+        final = gpt_caller.call_step_2(fn_name, result_str)
+        return final
     else:
-        # GPT no llamó a ninguna función. Devolvemos su texto normal
-        return choice.message["content"].strip()
+        # Sin function_call => GPT devolvió un texto normal
+        return choice.message.content.strip()
