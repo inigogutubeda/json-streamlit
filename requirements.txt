@@ -8,6 +8,3 @@ pandas
 regex
 json
 pymupdf
-pdfplumber
-requests
-beautifulsoup4
