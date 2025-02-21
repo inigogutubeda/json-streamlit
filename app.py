@@ -78,6 +78,7 @@ def vista_chatbot():
     if "chat_history" not in st.session_state:
         st.session_state["chat_history"] = []
 
+    # Input arriba del chat para priorizar la última pregunta
     user_input = st.text_input("✍️ Escribe tu pregunta:")
 
     if st.button("Enviar"):
@@ -86,31 +87,26 @@ def vista_chatbot():
             st.error("⚠️ Falta OPENAI_API_KEY en secrets.")
         else:
             resp = process_user_question(supabase_client, user_input, openai_api_key)
-            st.session_state["chat_history"].append(("Usuario", user_input))
-            st.session_state["chat_history"].append(("Chatbot 🤖", resp))
+            st.session_state["chat_history"].insert(0, ("Usuario", user_input))
+            st.session_state["chat_history"].insert(0, ("Chatbot 🤖", resp))
 
-    # Historial de Conversación con Mejor Formato
+    # Contenedor del historial de conversación con scroll automático
     st.subheader("📝 Historial de Conversación")
-    for r, m in st.session_state["chat_history"]:
-        if r == "Usuario":
-            st.markdown(f"""
-                <div style='background-color: #d1ecf1; padding: 10px; border-radius: 10px; margin: 5px 0;'>
-                    <b>🧑‍💼 {r}</b>: {m}
-                </div>
-                """, unsafe_allow_html=True)
-        else:
-            # Aplicamos formato si la respuesta tiene listas de datos
-            if isinstance(m, list):
-                formatted_text = "<br>".join([f"• {item}" for item in m])
+    with st.container():
+        for r, m in st.session_state["chat_history"]:
+            if r == "Usuario":
+                st.markdown(f"""
+                    <div style='background-color: #d1ecf1; padding: 10px; border-radius: 10px; margin: 5px 0;'>
+                        <b>🧑‍💼 {r}</b>: {m}
+                    </div>
+                    """, unsafe_allow_html=True)
             else:
                 formatted_text = m.replace("-", "•").replace("\n", "<br>")
-
-            st.markdown(f"""
-                <div style='background-color: #f8f9fa; border-left: 5px solid #dc3545; padding: 10px; border-radius: 10px; margin: 5px 0;'>
-                    <b>{r}</b>: {formatted_text}
-                </div>
-                """, unsafe_allow_html=True)
-
+                st.markdown(f"""
+                    <div style='background-color: #f8f9fa; border-left: 5px solid #dc3545; padding: 10px; border-radius: 10px; margin: 5px 0;'>
+                        <b>{r}</b>: {formatted_text}
+                    </div>
+                    """, unsafe_allow_html=True)
 # 🎛 Navegación Principal
 def main():
     st.sidebar.title("📌 POC Residencias")
