@@ -6,5 +6,4 @@ python-dotenv
 plotly
 pandas
 regex
-json
 pymupdf
