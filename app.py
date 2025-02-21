@@ -72,13 +72,14 @@ def vista_top_conceptos():
     st.plotly_chart(fig, use_container_width=True)
 
 # 🤖 Chatbot con mejoras visuales
+# 🤖 Chatbot con Mejor Formato de Respuestas
 def vista_chatbot():
     st.header("💬 Chatbot Residencias")
 
     if "chat_history" not in st.session_state:
         st.session_state["chat_history"] = []
 
-    # Input arriba del chat para priorizar la última pregunta
+    # Input arriba del chat
     user_input = st.text_input("✍️ Escribe tu pregunta:")
 
     if st.button("Enviar"):
@@ -87,8 +88,9 @@ def vista_chatbot():
             st.error("⚠️ Falta OPENAI_API_KEY en secrets.")
         else:
             resp = process_user_question(supabase_client, user_input, openai_api_key)
+            resp_formatted = formatear_respuesta(resp)  # Aplicamos el nuevo formato
             st.session_state["chat_history"].insert(0, ("Usuario", user_input))
-            st.session_state["chat_history"].insert(0, ("Chatbot 🤖", resp))
+            st.session_state["chat_history"].insert(0, ("Chatbot 🤖", resp_formatted))
 
     # Historial de Conversación con Mejor Formato
     st.subheader("📝 Historial de Conversación")
@@ -101,28 +103,64 @@ def vista_chatbot():
                     </div>
                     """, unsafe_allow_html=True)
             else:
-                formatted_text = formatear_respuesta(m)
                 st.markdown(f"""
-                    <div style='background-color: #f8f9fa; border-left: 5px solid #dc3545; padding: 10px; border-radius: 10px; margin: 5px 0;'>
-                        <b>{r}</b>: {formatted_text}
+                    <div style='background-color: #ffffff; border-left: 5px solid #dc3545; 
+                                padding: 15px; border-radius: 10px; margin: 5px 0; font-size: 14px;'>
+                        {m}
                     </div>
                     """, unsafe_allow_html=True)
 
-# 📌 Función para Mejorar el Formato de las Respuestas
+# 📌 Nueva Función para Mejorar el Formato de las Respuestas
 def formatear_respuesta(respuesta):
     """
-    Convierte la respuesta en un formato más estructurado usando Markdown.
+    Aplica formato a la respuesta para mejorar la presentación.
+    - Listas estructuradas si hay múltiples elementos.
+    - Tablas estilizadas si hay datos tabulares.
+    - Negritas y separaciones visuales para mejorar la lectura.
     """
     if isinstance(respuesta, list):  
-        # Si es una lista, formatearla con viñetas
-        return "<br>".join([f"• <b>{item}</b>" for item in respuesta])
+        return "<ul style='padding-left: 20px;'>" + "".join([f"<li><b>{item}</b></li>" for item in respuesta]) + "</ul>"
 
     if isinstance(respuesta, pd.DataFrame):  
-        # Si es un DataFrame, mostrarlo como tabla HTML
-        return respuesta.to_html(index=False, escape=False)
+        return respuesta.to_html(index=False, escape=False, border=1, justify="center")
 
-    # Convertir respuestas en texto plano con formato más visual
+    # Intentamos detectar si la respuesta tiene estructura tabular sin ser un DataFrame
+    lineas = respuesta.split("\n")
+    if all(" " in linea for linea in lineas):  # Verifica si todas las líneas tienen espacios como separación
+        tabla_html = """
+        <style>
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background-color: #f8f9fa;
+        }
+        </style>
+        <table>
+        """
+        for i, linea in enumerate(lineas):
+            columnas = linea.split()
+            tabla_html += "<tr>" + "".join([f"<th>{col}</th>" if i == 0 else f"<td>{col}</td>" for col in columnas]) + "</tr>"
+        tabla_html += "</table>"
+        return tabla_html
+
+    # Si no detecta formato especial, devuelve texto con mejor visualización
     return respuesta.replace("-", "•").replace("\n", "<br>")
+
+# 🎛 Navegación Principal
+def main():
+    st.sidebar.title("📌 POC Residencias")
+    menu = ["Dashboard", "Chatbot"]
+    sel = st.sidebar.radio("📍 Navegación", menu)
+
+    if sel == "Chatbot":
+        vista_chatbot()
 # 🎛 Navegación Principal
 def main():
     st.sidebar.title("📌 POC Residencias")
