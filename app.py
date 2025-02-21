@@ -71,15 +71,14 @@ def vista_top_conceptos():
     fig = px.bar(df_top.head(10), x="concepto", y="total", title="🏆 Top Conceptos")
     st.plotly_chart(fig, use_container_width=True)
 
-# 🤖 Chatbot con mejoras visuales
-# 🤖 Chatbot con Mejor Formato de Respuestas
+# 🤖 Chatbot con Formato Mejorado
 def vista_chatbot():
     st.header("💬 Chatbot Residencias")
 
     if "chat_history" not in st.session_state:
         st.session_state["chat_history"] = []
 
-    # Input arriba del chat
+    # Input arriba para priorizar la última pregunta
     user_input = st.text_input("✍️ Escribe tu pregunta:")
 
     if st.button("Enviar"):
@@ -110,48 +109,29 @@ def vista_chatbot():
                     </div>
                     """, unsafe_allow_html=True)
 
-# 📌 Nueva Función para Mejorar el Formato de las Respuestas
+# 📌 Nueva Función para Formatear Respuestas Correctamente
 def formatear_respuesta(respuesta):
     """
-    Aplica formato a la respuesta para mejorar la presentación.
-    - Listas estructuradas si hay múltiples elementos.
-    - Tablas estilizadas si hay datos tabulares.
-    - Negritas y separaciones visuales para mejorar la lectura.
+    Aplica formato a la respuesta:
+    - Si es una lista, usa viñetas.
+    - Si es una tabla, muestra en `st.dataframe()`.
+    - Si es texto normal, devuelve en Markdown sin formato de tabla.
     """
     if isinstance(respuesta, list):  
         return "<ul style='padding-left: 20px;'>" + "".join([f"<li><b>{item}</b></li>" for item in respuesta]) + "</ul>"
 
-    if isinstance(respuesta, pd.DataFrame):  
-        return respuesta.to_html(index=False, escape=False, border=1, justify="center")
+    if isinstance(respuesta, pd.DataFrame) and not respuesta.empty:
+        st.subheader("📊 Resultado en Tabla")
+        st.dataframe(respuesta.style.format("{:.2f}"))  # Formato numérico con 2 decimales
+        return ""
 
-    # Intentamos detectar si la respuesta tiene estructura tabular sin ser un DataFrame
-    lineas = respuesta.split("\n")
-    if all(" " in linea for linea in lineas):  # Verifica si todas las líneas tienen espacios como separación
-        tabla_html = """
-        <style>
-        table {
-            width: 100%;
-            border-collapse: collapse;
-        }
-        th, td {
-            border: 1px solid #ddd;
-            padding: 8px;
-            text-align: left;
-        }
-        th {
-            background-color: #f8f9fa;
-        }
-        </style>
-        <table>
-        """
-        for i, linea in enumerate(lineas):
-            columnas = linea.split()
-            tabla_html += "<tr>" + "".join([f"<th>{col}</th>" if i == 0 else f"<td>{col}</td>" for col in columnas]) + "</tr>"
-        tabla_html += "</table>"
-        return tabla_html
+    # Evitar que texto corto sea interpretado como tabla
+    if isinstance(respuesta, str) and len(respuesta.split()) < 10:
+        return f"**{respuesta}**"  # Aplica Markdown
 
-    # Si no detecta formato especial, devuelve texto con mejor visualización
+    # Si es texto estructurado con saltos de línea, lo formatea mejor
     return respuesta.replace("-", "•").replace("\n", "<br>")
+
 
 # 🎛 Navegación Principal
 def main():
