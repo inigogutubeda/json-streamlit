@@ -15,10 +15,12 @@ from rag.pipeline import process_user_question
 from rag.db_queries import (
     get_contratos,
     get_facturas,
-    # si implementaste:
-    # ranking_gastos_por_centro,
-    # ...
-    top_conceptos_global
+    top_conceptos_global,
+    facturas_importe_mayor,
+    proveedor_mas_contratos,
+    factura_mas_reciente,
+    gasto_en_rango_fechas,
+    contratos_vencen_antes_de
 )
 
 ########################################
