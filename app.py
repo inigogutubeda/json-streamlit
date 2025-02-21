@@ -24,11 +24,14 @@ supabase_client = init_connection()
 def generar_embedding(texto):
     openai_api_key = st.secrets.get("OPENAI_API_KEY")
     client = openai.OpenAI(api_key=openai_api_key)
+    
     response = client.embeddings.create(
-        model="text-embedding-ada-002",  
+        model="text-embedding-ada-002",
         input=texto
     )
-    return response["data"][0]["embedding"]
+    
+    # La forma correcta de acceder a los embeddings es:
+    return response.data[0].embedding
 
 # 📌 Función para Hacer Chunking del Documento
 def chunk_text(text, chunk_size=500):
