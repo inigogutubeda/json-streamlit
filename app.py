@@ -1,18 +1,17 @@
-########################################
-# app.py
-########################################
+import os
 import streamlit as st
 import pandas as pd
 import plotly.express as px
 from supabase import create_client, Client
 
-# Importa la función que orquesta el chatbot LLM approach
-# (asegúrate de tener 'rag/pipeline.py' con process_user_question())
+# Lógica RAG
 from rag.pipeline import process_user_question
-
-# Importa (para el dashboard) las funciones que consultan la BD
-# (asegúrate de tener 'rag/db_queries.py' con get_contratos, get_facturas, top_conceptos_global, etc.)
-from rag.db_queries import  get_contratos,get_facturas,top_conceptos_global,facturas_importe_mayor,proveedor_mas_contratos,factura_mas_reciente,gasto_en_rango_fechas,contratos_vencen_antes_de
+# Para dashboard
+from rag.db_queries import (
+    get_contratos,
+    get_facturas,
+    top_conceptos_global
+)
 
 ########################################
 # CONFIGURACIÓN STREAMLIT
@@ -23,18 +22,20 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# (Opcional) CSS adicional
 CUSTOM_CSS = """
 <style>
+/* Ajuste del contenedor principal */
 .main > div {
     padding-left: 3rem;
     padding-right: 3rem;
     background-color: #FFFFFF; 
 }
+/* Títulos centrados */
 h1, h2, h3 {
     text-align: center;
     color: #4CAF50;
 }
+/* Chat */
 .chat-container {
     background-color: #F0F2F6;
     border-radius: 5px;
@@ -62,7 +63,7 @@ h1, h2, h3 {
 st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 
 ########################################
-# FUNCIÓN DE CONEXIÓN A SUPABASE
+# Conexión Supabase
 ########################################
 def init_connection():
     url = st.secrets["SUPABASE_URL"]
@@ -70,14 +71,11 @@ def init_connection():
     supabase = create_client(url, key)
     return supabase
 
-# Creamos la conexión global (podrías hacerlo en main, 
-# pero usualmente lo cargamos una vez)
 supabase_client = init_connection()
 
 ########################################
-# SECCIONES DEL DASHBOARD
+# Funciones Dashboard
 ########################################
-
 def vista_general_dashboard():
     st.subheader("Visión General")
 
@@ -94,6 +92,7 @@ def vista_general_dashboard():
         st.metric("Total facturado", f"{df_fact['total'].sum():,.2f} €")
 
     st.markdown("---")
+
     st.write("**Contratos**")
     if df_contr.empty:
         st.warning("No hay contratos.")
@@ -105,6 +104,7 @@ def vista_general_dashboard():
         st.warning("No hay facturas.")
     else:
         st.dataframe(df_fact)
+
 
 def vista_por_residencia():
     st.subheader("Análisis por Residencia/Centro")
@@ -119,6 +119,7 @@ def vista_por_residencia():
     df_fact = get_facturas(supabase_client)
     df_fact["total"] = pd.to_numeric(df_fact["total"], errors="coerce").fillna(0)
 
+    # CORREGIDO: Cierra correctamente el corchete
     if centro_sel != "(Todos)":
         df_contr = df_contr[df_contr["centro"] == centro_sel]
         cids = df_contr["id"].unique().tolist()
@@ -139,12 +140,13 @@ def vista_por_residencia():
     # Grafico
     fig = px.bar(
         df_fact,
-        x="numero",
+        x="numero_factura",
         y="total",
         title=f"Facturación {centro_sel}",
-        labels={"numero": "Factura", "total": "Importe (€)"}
+        labels={"numero_factura": "Factura", "total": "Importe (€)"}
     )
     st.plotly_chart(fig, use_container_width=True)
+
 
 def vista_top_conceptos():
     st.subheader("Top Conceptos de Gasto")
@@ -165,37 +167,36 @@ def vista_top_conceptos():
     st.plotly_chart(fig, use_container_width=True)
 
 ########################################
-# SECCIÓN DEL CHATBOT
+# Chatbot
 ########################################
 def vista_chatbot():
-    st.header("Chatbot (LLM con function calling)")
+    st.header("Chatbot (RAG)")
 
-    # Historial local
     if "chat_history" not in st.session_state:
         st.session_state["chat_history"] = []
 
-    st.write("Preguntas de ejemplo: “¿En qué residencia gastamos más en 2024?” o “¿Cuántas facturas tenemos?”,“¿Cuál es la factura más reciente?”"
-             )
+    st.write("Preguntas de ejemplo: “¿En qué residencia gastamos más en 2024?”")
     user_input = st.text_input("Escribe tu pregunta:", "")
     if st.button("Enviar"):
-        openai_api_key = st.secrets.get("OPENAI_API_KEY")
-        if not openai_api_key:
-            st.error("Falta la clave OPENAI_API_KEY en secrets.")
-        else:
-            # Llamamos a process_user_question, que usa function calling
-            respuesta = process_user_question(supabase_client, user_input, openai_api_key)
-            # Guardamos en historial
-            st.session_state["chat_history"].append(("user", user_input))
-            st.session_state["chat_history"].append(("bot", respuesta))
+        if user_input.strip():
+            openai_api_key = st.secrets.get("OPENAI_API_KEY")
+            if not openai_api_key:
+                st.error("Falta OPENAI_API_KEY en secrets.")
+            else:
+                respuesta = process_user_question(supabase_client, user_input, openai_api_key)
+                st.session_state["chat_history"].append(("user", user_input))
+                st.session_state["chat_history"].append(("bot", respuesta))
 
+    # Mostrar historial
     st.subheader("Historial")
     with st.container():
+        st.markdown('<div class="chat-container">', unsafe_allow_html=True)
         for role, msg in st.session_state["chat_history"]:
             if role == "user":
                 st.markdown(f'<div class="user-message">{msg}</div>', unsafe_allow_html=True)
             else:
                 st.markdown(f'<div class="bot-message">{msg}</div>', unsafe_allow_html=True)
-
+        st.markdown('</div>', unsafe_allow_html=True)
 
 ########################################
 # MAIN
@@ -205,7 +206,7 @@ def main():
     op = st.sidebar.radio("Navegación", ["Dashboard", "Chatbot"])
 
     if op == "Dashboard":
-        # Creamos tabs para subdividir
+        # Tabs en el dashboard
         tabs = st.tabs(["Visión General", "Por Residencia", "Top Conceptos"])
         with tabs[0]:
             vista_general_dashboard()
@@ -214,7 +215,6 @@ def main():
         with tabs[2]:
             vista_top_conceptos()
     else:
-        # Chatbot con function calling
         vista_chatbot()
 
 if __name__ == "__main__":
